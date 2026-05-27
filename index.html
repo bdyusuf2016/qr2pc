@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="bn" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>সমাজ কোরবানী ব্যবস্থাপনা - আল্টিমেট প্রো+</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <style>
+        :root {
+            --bg-main: #edf4f2;
+            --bg-soft: #f8fafc;
+            --text-main: #0f172a;
+            --text-soft: #475569;
+            --card-bg: rgba(255, 255, 255, 0.96);
+            --card-border: rgba(148, 163, 184, 0.18);
+            --input-bg: #f8fafc;
+            --input-border: #cbd5e1;
+        }
+        body {
+            font-family: 'Hind Siliguri', sans-serif;
+            background:
+                radial-gradient(circle at top left, rgba(16, 185, 129, 0.12), transparent 28%),
+                radial-gradient(circle at top right, rgba(245, 158, 11, 0.10), transparent 24%),
+                linear-gradient(180deg, var(--bg-soft) 0%, var(--bg-main) 100%);
+            color: var(--text-main);
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+        .dark-mode {
+            --bg-main: #07111f;
+            --bg-soft: #0b1627;
+            --text-main: #e5eef7;
+            --text-soft: #bfd0e4;
+            --card-bg: rgba(15, 23, 42, 0.94);
+            --card-border: rgba(148, 163, 184, 0.14);
+            --input-bg: #162235;
+            --input-border: #334155;
+            background:
+                radial-gradient(circle at top left, rgba(16, 185, 129, 0.16), transparent 30%),
+                radial-gradient(circle at top right, rgba(245, 158, 11, 0.12), transparent 24%),
+                linear-gradient(180deg, var(--bg-soft) 0%, var(--bg-main) 100%);
+            color: var(--text-main);
+        }
+        .islamic-gradient {
+            background: linear-gradient(135deg, #064e3b 0%, #0f766e 55%, #0f9f74 100%);
+        }
+        .glass-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--card-border);
+            box-shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
+        }
+        .dark-mode .glass-card {
+            box-shadow: 0 18px 40px rgba(2, 6, 23, 0.34);
+        }
+        .dark-mode .text-slate-700,
+        .dark-mode .text-slate-600,
+        .dark-mode .text-slate-500,
+        .dark-mode .text-slate-400,
+        .dark-mode .text-slate-300 {
+            color: var(--text-soft) !important;
+        }
+        .dark-mode .text-slate-800,
+        .dark-mode .text-slate-900 {
+            color: var(--text-main) !important;
+        }
+        .dark-mode .bg-slate-50,
+        .dark-mode .bg-white {
+            background-color: rgba(22, 34, 53, 0.92) !important;
+        }
+        .dark-mode .bg-slate-100 {
+            background-color: rgba(30, 41, 59, 0.95) !important;
+        }
+        .dark-mode .bg-slate-200 {
+            background-color: rgba(51, 65, 85, 0.95) !important;
+        }
+        .dark-mode .border-slate-100,
+        .dark-mode .border-slate-200,
+        .dark-mode .border-slate-700,
+        .dark-mode .border-slate-800 {
+            border-color: rgba(148, 163, 184, 0.12) !important;
+        }
+        input, select, textarea {
+            color: var(--text-main);
+        }
+        input::placeholder, textarea::placeholder {
+            color: #64748b;
+            opacity: 1;
+        }
+        .dark-mode input::placeholder, .dark-mode textarea::placeholder {
+            color: #94a3b8;
+        }
+        input, select {
+            border-color: var(--input-border);
+        }
+        
+        /* Collapsible Animation */
+        .collapsible-content { max-height: 0; overflow: hidden; transition: max-height 0.4s ease-in-out, opacity 0.3s; opacity: 0; }
+        .collapsible-content.open { max-height: 5000px; opacity: 1; padding-bottom: 1rem; }
+        .rotate-icon { transition: transform 0.3s; }
+        .rotate-icon.active { transform: rotate(180deg); }
+
+        .meat-check { width: 1.15rem; height: 1.15rem; cursor: pointer; accent-color: #059669; }
+        .house-name-input {
+            background: transparent;
+            border: none;
+            border-bottom: 1px dashed #94a3b8;
+            outline: none;
+            width: 100%;
+            font-size: 14px;
+            color: var(--text-main);
+        }
+        .dark-mode .house-name-input { border-bottom-color: #475569; }
+        .house-name-input:focus { border-bottom: 1px solid #059669; background: rgba(5, 150, 105, 0.08); }
+        .dark-mode .house-name-input:focus { background: rgba(16, 185, 129, 0.10); }
+        th, label, .text-xs, .text-[10px], .text-[9px] {
+            letter-spacing: 0.01em;
+        }
+        #toast {
+            background: rgba(15, 23, 42, 0.94);
+            border: 1px solid rgba(148, 163, 184, 0.16);
+        }
+
+        @media print { 
+            .no-print { display: none !important; } 
+            .collapsible-content { max-height: none !important; opacity: 1 !important; display: block !important; }
+            body { background: white !important; }
+            .glass-card { border: 1px solid #ddd !important; box-shadow: none !important; margin-bottom: 15px; }
+        }
+    </style>
+</head>
+<body class="min-h-screen pb-24">
+
+    <!-- Navbar -->
+    <nav class="islamic-gradient text-white shadow-xl sticky top-0 z-50 no-print">
+        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <i data-lucide="calculator" class="w-7 h-7 text-amber-400"></i>
+                <h1 class="text-lg md:text-xl font-bold tracking-tight" id="header-title">সমাজ কোরবানী</h1>
+            </div>
+            <!-- Theme & Settings Controls -->
+            <div class="flex items-center gap-1 sm:gap-3">
+                <button onclick="toggleDarkMode()" id="theme-toggle" class="p-2.5 rounded-xl hover:bg-emerald-700 transition border border-white/10 shadow-sm" title="থিম পরিবর্তন">
+                    <i data-lucide="sun" id="sun-icon" class="w-5 h-5 hidden"></i>
+                    <i data-lucide="moon" id="moon-icon" class="w-5 h-5"></i>
+                </button>
+                <button onclick="openSettingsModal()" class="p-2.5 rounded-xl hover:bg-emerald-700 transition border border-white/10 shadow-sm" title="সেটিংস">
+                    <i data-lucide="settings" class="w-5 h-5"></i>
+                </button>
+                <button onclick="window.print()" class="bg-amber-500 hover:bg-amber-600 px-3 sm:px-5 py-2 rounded-xl text-xs font-bold shadow-lg flex items-center gap-2 transition">
+                    <i data-lucide="printer" class="w-4 h-4"></i> <span class="hidden sm:inline">রিপোর্ট</span>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container mx-auto px-4 py-6">
+        
+        <!-- Main Dashboard Stats -->
+        <div class="mb-5 no-print">
+            <div id="syncStatusBanner" class="glass-card rounded-2xl px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border border-emerald-100 dark:border-slate-800">
+                <div>
+                    <p class="text-xs font-bold text-slate-700 dark:text-slate-200">ডাটা সংরক্ষণ অবস্থা</p>
+                    <p id="syncStatusText" class="text-[11px] text-slate-500 dark:text-slate-300">লোকাল মোড চালু আছে</p>
+                </div>
+                <div class="flex items-center gap-2 text-[10px]">
+                    <span id="syncModeBadge" class="px-3 py-1 rounded-full bg-slate-200 dark:bg-slate-800 font-bold text-slate-700 dark:text-slate-200">LOCAL</span>
+                    <button onclick="loadCloudData(true)" class="px-3 py-2 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 transition">Cloud Load</button>
+                    <button onclick="saveCloudData(true)" class="px-3 py-2 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 transition">Cloud Save</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8 no-print">
+            <div class="glass-card p-5 rounded-3xl border-b-4 border-emerald-500 shadow-sm text-center">
+                <p class="text-[10px] font-bold uppercase opacity-60">মোট মাংস (কেজি)</p>
+                <h3 class="text-2xl font-bold text-emerald-600" id="stat-total-meat">0.00</h3>
+            </div>
+            <div class="glass-card p-5 rounded-3xl border-b-4 border-amber-500 shadow-sm text-center">
+                <p class="text-[10px] font-bold uppercase opacity-60">সমাজ অংশ</p>
+                <h3 class="text-2xl font-bold text-amber-600" id="stat-society-meat">0.00</h3>
+            </div>
+            <div class="glass-card p-5 rounded-3xl border-b-4 border-blue-500 shadow-sm text-center">
+                <p class="text-[10px] font-bold uppercase opacity-60">ঘর প্রতি মাংস</p>
+                <h3 class="text-2xl font-bold text-blue-600" id="stat-per-house">0.00</h3>
+            </div>
+            <div class="glass-card p-5 rounded-3xl border-b-4 border-purple-500 shadow-sm text-center">
+                <p class="text-[10px] font-bold uppercase opacity-60">মোট ঘর সংখ্যা</p>
+                <h3 class="text-2xl font-bold text-purple-600" id="stat-house-count">0</h3>
+            </div>
+        </div>
+
+        <!-- SOCIETY MEAT SUMMARY (COLLAPSIBLE) -->
+        <section class="glass-card rounded-[2rem] shadow-md border-t-4 border-amber-500 mb-8 overflow-hidden">
+            <div class="p-5 flex justify-between items-center cursor-pointer select-none bg-amber-50/50 dark:bg-amber-900/10" onclick="toggleCard('society-summary-content', 'soc-summary-icon')">
+                <div class="flex items-center gap-3">
+                    <i data-lucide="bar-chart-3" class="text-amber-600"></i>
+                    <h2 class="font-bold text-slate-700 dark:text-amber-400">সমাজ মাংস বন্টন সারসংক্ষেপ (ক্যাটেগরি ভিত্তিক)</h2>
+                </div>
+                <i data-lucide="chevron-down" id="soc-summary-icon" class="rotate-icon w-5 h-5 text-amber-600"></i>
+            </div>
+            <div id="society-summary-content" class="collapsible-content px-5">
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 py-6" id="society-cat-summary-grid">
+                    <!-- Summary generated here -->
+                </div>
+                <div class="p-4 bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100 dark:border-emerald-800/30 text-center mb-4">
+                    <p class="text-xs text-emerald-800 dark:text-emerald-400 font-medium italic">উপরের হিসাবটি সমাজের <span class="font-bold" id="summary-house-count-display">0</span> টি ঘরের জন্য বন্টনযোগ্য গড় পরিমাণ।</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Animal Entry Controls -->
+        <div class="flex flex-wrap justify-between items-center mb-6 gap-4 no-print">
+            <h2 class="font-bold flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                <i data-lucide="list-checks" class="text-emerald-600"></i> পশুর তালিকা ও বন্টন
+            </h2>
+            <div class="flex gap-2 w-full sm:w-auto">
+                <button onclick="toggleAllCards()" class="flex-1 sm:flex-none px-4 py-2 text-xs font-bold bg-slate-200 dark:bg-slate-800 rounded-xl hover:bg-slate-300 transition">সব Expand/Collapse</button>
+                <button onclick="openAnimalModal()" class="flex-1 sm:flex-none bg-emerald-600 text-white px-5 py-2.5 rounded-2xl font-bold shadow-lg hover:bg-emerald-700 transition flex items-center justify-center gap-2">
+                    <i data-lucide="plus" class="w-4 h-4"></i> নতুন পশু যোগ
+                </button>
+            </div>
+        </div>
+
+        <!-- Animal Cards Container -->
+        <div id="animalContainer" class="space-y-4 mb-12"></div>
+
+        <!-- Main House Table -->
+        <section class="glass-card rounded-[2.5rem] shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden">
+            <div class="islamic-gradient p-5 text-white flex justify-between items-center">
+                <h3 class="font-bold flex items-center gap-2"><i data-lucide="users"></i> ঘর ভিত্তিক বন্টন ট্র্যাকিং</h3>
+                <span class="text-[10px] bg-white/20 px-4 py-1.5 rounded-full uppercase font-bold tracking-widest">লাইভ অটো-সেভ</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-slate-50 dark:bg-slate-800 text-[10px] uppercase font-bold text-slate-600 dark:text-slate-200">
+                        <tr id="houseTableHeader">
+                            <th class="p-5 border-b min-w-[200px]">ঘর ও সদস্যের নাম</th>
+                            <th class="p-5 border-b text-right">মোট (কেজি)</th>
+                            <th class="p-5 border-b text-center">সলিড</th>
+                            <th class="p-5 border-b text-center">হাড়</th>
+                            <th class="p-5 border-b text-center">কলিজা</th>
+                            <th class="p-5 border-b text-center">অন্যান্য</th>
+                        </tr>
+                    </thead>
+                    <tbody id="houseTableBody" class="divide-y dark:divide-slate-700"></tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <!-- SETTINGS MODAL -->
+    <div id="settingsModal" class="fixed inset-0 bg-slate-900/80 hidden items-center justify-center z-[100] p-4 no-print">
+        <div class="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden">
+            <div class="p-6 border-b dark:border-slate-800 flex justify-between items-center">
+                <h3 class="text-xl font-bold text-emerald-600 flex items-center gap-2"><i data-lucide="settings"></i> সাধারণ সেটিংস</h3>
+                <button onclick="closeSettingsModal()" class="text-slate-500 dark:text-slate-300 hover:text-slate-700 dark:hover:text-white transition p-1"><i data-lucide="x"></i></button>
+            </div>
+            <div class="p-8 space-y-6">
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-600 dark:text-slate-200 mb-2">সমাজ/মহল্লার নাম</label>
+                    <input type="text" id="set-society-name" class="w-full p-4 bg-slate-50 dark:bg-slate-800 border rounded-2xl focus:ring-2 focus:ring-emerald-500 outline-none transition font-medium">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-600 dark:text-slate-200 mb-2">মোট ঘর সংখ্যা</label>
+                    <input type="number" id="set-total-houses" class="w-full p-4 bg-slate-50 dark:bg-slate-800 border rounded-2xl focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-xl">
+                </div>
+                <div class="rounded-[2rem] border border-slate-200 dark:border-slate-800 p-5 bg-slate-50 dark:bg-slate-800/50 space-y-4">
+                    <div class="flex items-center justify-between gap-4">
+                        <div>
+                            <p class="text-xs font-bold uppercase text-slate-600 dark:text-slate-200">Supabase Cloud Sync</p>
+                            <p class="text-[11px] text-slate-500 dark:text-slate-300">একই ডাটা একাধিক ডিভাইসে রাখতে এটা চালু করুন</p>
+                        </div>
+                        <label class="inline-flex items-center gap-2 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                            <input type="checkbox" id="set-supabase-enabled" class="w-4 h-4 accent-emerald-600">
+                            চালু
+                        </label>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase text-slate-600 dark:text-slate-200 mb-2">Project URL</label>
+                        <input type="text" id="set-supabase-url" placeholder="https://your-project.supabase.co" class="w-full p-4 bg-white dark:bg-slate-900 border rounded-2xl focus:ring-2 focus:ring-emerald-500 outline-none transition font-medium">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase text-slate-600 dark:text-slate-200 mb-2">Anon Key</label>
+                        <textarea id="set-supabase-anon-key" rows="3" placeholder="Supabase anon public key" class="w-full p-4 bg-white dark:bg-slate-900 border rounded-2xl focus:ring-2 focus:ring-emerald-500 outline-none transition font-medium"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase text-slate-600 dark:text-slate-200 mb-2">Cloud Record ID</label>
+                        <input type="text" id="set-supabase-project-key" placeholder="shantibag-society" class="w-full p-4 bg-white dark:bg-slate-900 border rounded-2xl focus:ring-2 focus:ring-emerald-500 outline-none transition font-medium">
+                    </div>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-300">SQL setup ফাইল: <span class="font-bold">supabase-setup.sql</span></p>
+                </div>
+                <button onclick="saveSettings()" class="w-full py-4 bg-emerald-600 text-white rounded-2xl font-bold shadow-lg hover:bg-emerald-700 transition">সব সেটিংস আপডেট করুন</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ANIMAL MODAL -->
+    <div id="animalModal" class="fixed inset-0 bg-slate-900/90 hidden items-center justify-center z-[100] p-2 sm:p-4 overflow-y-auto no-print">
+        <div class="bg-white dark:bg-slate-900 w-full max-w-4xl rounded-[2.5rem] shadow-2xl overflow-hidden my-10 animate-in zoom-in duration-300">
+            <div class="islamic-gradient p-5 text-white flex justify-between items-center sticky top-0 z-20">
+                <h3 class="font-bold flex items-center gap-2 text-lg"><i data-lucide="plus-circle"></i> পশুর তথ্য ও বন্টন</h3>
+                <button onclick="closeAnimalModal()" class="bg-white/20 p-1 rounded-full hover:bg-white/40"><i data-lucide="x"></i></button>
+            </div>
+            <form id="animalForm" onsubmit="handleAnimalSubmit(event)" class="p-6 space-y-6">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                    <div>
+                        <label class="text-[10px] font-bold uppercase text-slate-600 dark:text-slate-200 block mb-1">পশুর নাম</label>
+                        <input type="text" id="m_animalName" required class="w-full p-3.5 bg-slate-50 dark:bg-slate-800 border rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold uppercase text-slate-600 dark:text-slate-200 block mb-1">পশুর ধরন</label>
+                        <select id="m_animalType" class="w-full p-3.5 bg-slate-50 dark:bg-slate-800 border rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none">
+                            <option value="cow">গরু (১/৩ সমাজ)</option>
+                            <option value="buffalo">মহিষ (১/৩ সমাজ)</option>
+                            <option value="goat">ছাগল (১/২ সমাজ)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300 block mb-1">বন্টনযোগ্য মাংস (কেজি)</label>
+                        <input type="number" id="m_usableMeat" step="0.01" required oninput="validateWeights()" class="w-full p-3.5 bg-emerald-50 dark:bg-emerald-900/20 border rounded-xl font-bold text-lg focus:ring-2 focus:ring-emerald-500 outline-none">
+                    </div>
+                </div>
+
+                <div class="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800">
+                    <div class="flex justify-between items-center mb-4">
+                        <h4 class="text-xs font-bold uppercase text-slate-600 dark:text-slate-200">ক্যাটেগরি ওজন এন্ট্রি (কেজি)</h4>
+                        <div id="weightBadge" class="text-[10px] font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-700">এন্ট্রি: 0.00 / 0.00</div>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-6 gap-4" id="catInputsGrid"></div>
+                    <div class="mt-5 w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+                        <div id="weightProgress" class="bg-emerald-500 h-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <div id="shListGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+                <button type="button" onclick="addShRow()" class="text-xs bg-blue-600 text-white px-5 py-2.5 rounded-xl shadow-md hover:bg-blue-700 transition">+ নতুন অংশীজন</button>
+
+                <div class="flex gap-4 pt-4 border-t dark:border-slate-800">
+                    <button type="button" onclick="closeAnimalModal()" class="flex-1 py-4 border rounded-2xl font-bold hover:bg-slate-100 transition">বাতিল</button>
+                    <button type="submit" id="saveBtn" class="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-bold shadow-xl hover:bg-emerald-700 transition">সেভ করুন</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-8 py-4 rounded-full shadow-2xl translate-y-40 transition-all duration-500 z-[200] text-sm font-bold flex items-center gap-2">
+        <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i>
+        <span id="toastMsg">সফল হয়েছে!</span>
+    </div>
+
+    <script>
+        const LOCAL_STATE_KEY = 'qurbani_final_app_v10';
+        const SUPABASE_CONFIG_KEY = 'qurbani_supabase_config_v1';
+        const categories = [
+            { id: 'c1', name: 'সলিড মাংস', short: 'সলিড' },
+            { id: 'c2', name: 'হাড়-সিনা', short: 'হাড়' },
+            { id: 'c3', name: 'কলিজা', short: 'কলিজা' },
+            { id: 'c4', name: 'চর্বি', short: 'চর্বি' },
+            { id: 'c5', name: 'মাথা-পায়া', short: 'মাথা' },
+            { id: 'c6', name: 'নাড়িভুঁড়ি', short: 'নাড়ি' }
+        ];
+
+        let state = getDefaultState();
+        let editingId = null;
+        let supabaseClient = null;
+        let supabaseConfig = getDefaultSupabaseConfig();
+        let lastSyncLabel = "এখনও cloud sync হয়নি";
+
+        function getDefaultState() {
+            return { society: { name: "শান্তিবাগ সমাজ", houses: [] }, animals: [], darkMode: false };
+        }
+
+        function getDefaultSupabaseConfig() {
+            return { enabled: false, url: "", anonKey: "", projectKey: "default-qurbani-app" };
+        }
+
+        function normalizeState(candidate) {
+            const normalized = getDefaultState();
+            if (!candidate || typeof candidate !== 'object') return normalized;
+
+            normalized.darkMode = Boolean(candidate.darkMode);
+            normalized.animals = Array.isArray(candidate.animals) ? candidate.animals.map(animal => ({
+                id: animal.id || Date.now(),
+                name: animal.name || "",
+                type: animal.type || "cow",
+                usableMeat: Number(animal.usableMeat) || 0,
+                catWeights: { c1: 0, c2: 0, c3: 0, c4: 0, c5: 0, c6: 0, ...(animal.catWeights || {}) },
+                shareholders: Array.isArray(animal.shareholders) ? animal.shareholders.map(sh => ({
+                    name: sh.name || "",
+                    parts: Number(sh.parts) || 0
+                })) : []
+            })) : [];
+
+            if (candidate.society && typeof candidate.society === 'object') {
+                normalized.society.name = candidate.society.name || normalized.society.name;
+                normalized.society.houses = Array.isArray(candidate.society.houses) ? candidate.society.houses.map((house, index) => ({
+                    id: house.id || Date.now() + index,
+                    name: house.name || "",
+                    checks: {
+                        c1: Boolean(house.checks && house.checks.c1),
+                        c2: Boolean(house.checks && house.checks.c2),
+                        c3: Boolean(house.checks && house.checks.c3),
+                        c4: Boolean(house.checks && house.checks.c4)
+                    }
+                })) : [];
+            }
+            return normalized;
+        }
+
+        function loadLocalState() {
+            const saved = localStorage.getItem(LOCAL_STATE_KEY);
+            if (!saved) return getDefaultState();
+            try {
+                return normalizeState(JSON.parse(saved));
+            } catch {
+                return getDefaultState();
+            }
+        }
+
+        function loadSupabaseConfig() {
+            const saved = localStorage.getItem(SUPABASE_CONFIG_KEY);
+            if (!saved) return getDefaultSupabaseConfig();
+            try {
+                return { ...getDefaultSupabaseConfig(), ...JSON.parse(saved) };
+            } catch {
+                return getDefaultSupabaseConfig();
+            }
+        }
+
+        function persistSupabaseConfig() {
+            localStorage.setItem(SUPABASE_CONFIG_KEY, JSON.stringify(supabaseConfig));
+        }
+
+        async function init() {
+            state = loadLocalState();
+            supabaseConfig = loadSupabaseConfig();
+
+            if (state.darkMode) {
+                document.body.classList.add('dark-mode');
+            }
+
+            populateSupabaseFields();
+            if (supabaseConfig.enabled) {
+                await initializeSupabase();
+                await loadCloudData(false);
+            }
+
+            if (state.society.houses.length === 0) syncHouses(1);
+            applyThemeIcons();
+            updateUI();
+            renderCatInputs();
+            updateSyncUI();
+            lucide.createIcons();
+        }
+
+        function populateSupabaseFields() {
+            document.getElementById('set-supabase-enabled').checked = Boolean(supabaseConfig.enabled);
+            document.getElementById('set-supabase-url').value = supabaseConfig.url || "";
+            document.getElementById('set-supabase-anon-key').value = supabaseConfig.anonKey || "";
+            document.getElementById('set-supabase-project-key').value = supabaseConfig.projectKey || "";
+        }
+
+        function updateSyncUI(message = "") {
+            const enabled = Boolean(supabaseConfig.enabled && supabaseClient);
+            const modeBadge = document.getElementById('syncModeBadge');
+            const statusText = document.getElementById('syncStatusText');
+
+            modeBadge.textContent = enabled ? 'CLOUD' : 'LOCAL';
+            modeBadge.className = enabled
+                ? "px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/30 font-bold text-emerald-700 dark:text-emerald-300"
+                : "px-3 py-1 rounded-full bg-slate-200 dark:bg-slate-800 font-bold text-slate-700 dark:text-slate-200";
+
+            statusText.textContent = message || (enabled
+                ? `Supabase sync সক্রিয়। ${lastSyncLabel}`
+                : "লোকাল মোড চালু আছে");
+        }
+
+        async function initializeSupabase() {
+            if (!supabaseConfig.enabled || !supabaseConfig.url || !supabaseConfig.anonKey) {
+                supabaseClient = null;
+                updateSyncUI("লোকাল মোড চালু আছে");
+                return false;
+            }
+
+            try {
+                supabaseClient = window.supabase.createClient(supabaseConfig.url, supabaseConfig.anonKey);
+                updateSyncUI(`Cloud connection প্রস্তুত। Record ID: ${supabaseConfig.projectKey}`);
+                return true;
+            } catch (error) {
+                console.error(error);
+                supabaseClient = null;
+                updateSyncUI("Supabase connect করা যায়নি");
+                return false;
+            }
+        }
+
+        async function loadCloudData(showToastMessage = true) {
+            if (!(await initializeSupabase())) {
+                if (showToastMessage) showToast("Supabase config সম্পূর্ণ নয়");
+                return;
+            }
+
+            const { data, error } = await supabaseClient
+                .from('app_states')
+                .select('payload, updated_at')
+                .eq('id', supabaseConfig.projectKey)
+                .maybeSingle();
+
+            if (error) {
+                console.error(error);
+                updateSyncUI("Cloud data load ব্যর্থ হয়েছে");
+                if (showToastMessage) showToast("Cloud load ব্যর্থ হয়েছে");
+                return;
+            }
+
+            if (data && data.payload) {
+                state = normalizeState(data.payload);
+                saveLocalState();
+                if (state.darkMode) document.body.classList.add('dark-mode');
+                else document.body.classList.remove('dark-mode');
+                applyThemeIcons();
+                updateUI();
+                populateSupabaseFields();
+                lastSyncLabel = `সর্বশেষ load: ${new Date(data.updated_at).toLocaleString('en-GB')}`;
+                updateSyncUI();
+                if (showToastMessage) showToast("Cloud data load হয়েছে");
+            } else if (showToastMessage) {
+                updateSyncUI("Cloud এ এখনও কোনো saved data নেই");
+                showToast("Cloud এ data পাওয়া যায়নি");
+            }
+        }
+
+        async function saveCloudData(showToastMessage = true) {
+            if (!(await initializeSupabase())) {
+                if (showToastMessage) showToast("Supabase config সম্পূর্ণ নয়");
+                return false;
+            }
+
+            const payload = normalizeState(state);
+            const { error } = await supabaseClient
+                .from('app_states')
+                .upsert({
+                    id: supabaseConfig.projectKey,
+                    payload,
+                    updated_at: new Date().toISOString()
+                });
+
+            if (error) {
+                console.error(error);
+                updateSyncUI("Cloud save ব্যর্থ হয়েছে");
+                if (showToastMessage) showToast("Cloud save ব্যর্থ হয়েছে");
+                return false;
+            }
+
+            lastSyncLabel = `সর্বশেষ save: ${new Date().toLocaleString('en-GB')}`;
+            updateSyncUI();
+            if (showToastMessage) showToast("Cloud save সফল হয়েছে");
+            return true;
+        }
+
+        // --- HOUSE SYNC ---
+        function syncHouses(newCount) {
+            let currentHouses = state.society.houses;
+            if (newCount > currentHouses.length) {
+                for (let i = currentHouses.length + 1; i <= newCount; i++) {
+                    currentHouses.push({ id: Date.now() + i, name: "", checks: { c1: false, c2: false, c3: false, c4: false } });
+                }
+            } else if (newCount < currentHouses.length) {
+                state.society.houses = currentHouses.slice(0, newCount);
+            }
+        }
+
+        // --- THEME TOGGLE ---
+        function toggleDarkMode() {
+            state.darkMode = !state.darkMode;
+            document.body.classList.toggle('dark-mode');
+            applyThemeIcons();
+            saveData();
+        }
+
+        function applyThemeIcons() {
+            const sun = document.getElementById('sun-icon');
+            const moon = document.getElementById('moon-icon');
+            if(state.darkMode) {
+                sun.classList.remove('hidden');
+                moon.classList.add('hidden');
+            } else {
+                sun.classList.add('hidden');
+                moon.classList.remove('hidden');
+            }
+        }
+
+        // --- SETTINGS MODAL ---
+        function openSettingsModal() {
+            document.getElementById('set-society-name').value = state.society.name;
+            document.getElementById('set-total-houses').value = state.society.houses.length;
+            const modal = document.getElementById('settingsModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeSettingsModal() {
+            const modal = document.getElementById('settingsModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        async function saveSettings() {
+            state.society.name = document.getElementById('set-society-name').value || "সমাজ কোরবানী";
+            const newCount = parseInt(document.getElementById('set-total-houses').value) || 1;
+            supabaseConfig = {
+                enabled: document.getElementById('set-supabase-enabled').checked,
+                url: document.getElementById('set-supabase-url').value.trim(),
+                anonKey: document.getElementById('set-supabase-anon-key').value.trim(),
+                projectKey: document.getElementById('set-supabase-project-key').value.trim() || "default-qurbani-app"
+            };
+            persistSupabaseConfig();
+            await initializeSupabase();
+            syncHouses(newCount);
+            saveAndRefresh();
+            closeSettingsModal();
+            showToast("সেটিংস সংরক্ষিত হয়েছে");
+        }
+
+        // --- CALCULATION & RENDERING ---
+        function calculateAndRender() {
+            const animalContainer = document.getElementById('animalContainer');
+            const summaryGrid = document.getElementById('society-cat-summary-grid');
+            animalContainer.innerHTML = '';
+            summaryGrid.innerHTML = '';
+            
+            let totalM = 0, socM = 0;
+            let catSocTotal = { c1: 0, c2: 0, c3: 0, c4: 0, c5: 0, c6: 0 };
+
+            state.animals.forEach(animal => {
+                const sRatio = (animal.type === 'cow' || animal.type === 'buffalo') ? 33.33 : 50.0;
+                const pRatio = 100 - sRatio;
+                const animalSocKg = (animal.usableMeat * sRatio) / 100;
+                const totalParts = animal.shareholders.reduce((s, x) => s + x.parts, 0);
+                
+                totalM += animal.usableMeat; 
+                socM += animalSocKg;
+
+                categories.forEach(cat => {
+                    const catVal = animal.catWeights[cat.id] || 0;
+                    catSocTotal[cat.id] += (catVal * sRatio) / 100;
+                });
+
+                const card = document.createElement('div');
+                card.className = "glass-card rounded-[1.8rem] shadow-sm border dark:border-slate-800 overflow-hidden";
+                card.innerHTML = `
+                    <div class="p-5 bg-slate-50 dark:bg-slate-800/50 flex justify-between items-center cursor-pointer select-none" onclick="toggleCard('content-${animal.id}', 'icon-${animal.id}')">
+                        <div class="flex items-center gap-3">
+                            <i data-lucide="chevron-down" id="icon-${animal.id}" class="rotate-icon w-5 h-5 text-emerald-600"></i>
+                            <h3 class="font-bold text-sm sm:text-base">${animal.name} <span class="text-xs font-normal opacity-50 ml-2">(${animal.usableMeat.toFixed(1)} কেজি)</span></h3>
+                        </div>
+                        <div class="flex gap-2 no-print" onclick="event.stopPropagation()">
+                            <button onclick="openAnimalModal(${animal.id})" class="p-2 text-emerald-600 hover:bg-emerald-50 rounded-xl transition"><i data-lucide="edit-3"></i></button>
+                            <button onclick="deleteAnimal(${animal.id})" class="p-2 text-red-500 hover:bg-red-50 rounded-xl transition"><i data-lucide="trash-2"></i></button>
+                        </div>
+                    </div>
+                    <div id="content-${animal.id}" class="collapsible-content">
+                        <div class="p-5 pt-0 overflow-x-auto">
+                            <table class="w-full text-[11px] text-left">
+                                <thead class="bg-slate-50 dark:bg-slate-800 font-bold border-b dark:border-slate-700">
+                                    <tr>
+                                        <th class="p-3 border-r dark:border-slate-700">অংশীজন (অংশ)</th>
+                                        ${categories.map(c => `<th class="p-3 text-center">${c.short}</th>`).join('')}
+                                        <th class="p-3 text-right bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700">মোট</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y dark:divide-slate-700">
+                                    ${animal.shareholders.map(sh => {
+                                        let shTotal = 0;
+                                        let row = `<tr><td class="p-3 font-bold border-r dark:border-slate-700">${sh.name} (${sh.parts})</td>`;
+                                        categories.forEach(cat => {
+                                            const share = totalParts > 0 ? (((animal.catWeights[cat.id] || 0) * pRatio) / 100 / totalParts) * sh.parts : 0;
+                                            shTotal += share;
+                                            row += `<td class="p-3 text-center opacity-70">${share.toFixed(2)}</td>`;
+                                        });
+                                        return row + `<td class="p-3 text-right font-bold text-emerald-600">${shTotal.toFixed(2)}</td></tr>`;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>`;
+                animalContainer.appendChild(card);
+            });
+
+            const houseCount = state.society.houses.length || 1;
+            document.getElementById('stat-total-meat').innerText = totalM.toFixed(2);
+            document.getElementById('stat-society-meat').innerText = socM.toFixed(2);
+            document.getElementById('stat-house-count').innerText = state.society.houses.length;
+            document.getElementById('stat-per-house').innerText = (socM / houseCount).toFixed(2);
+            document.getElementById('summary-house-count-display').innerText = state.society.houses.length;
+
+            // Render Society Summary Cards
+            categories.forEach(cat => {
+                const totalCatKg = catSocTotal[cat.id];
+                const perHouseCatKg = totalCatKg / houseCount;
+                summaryGrid.innerHTML += `
+                    <div class="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 text-center transform transition hover:scale-105">
+                        <p class="text-[9px] uppercase font-bold text-slate-500 mb-1">${cat.name}</p>
+                        <p class="text-sm font-bold text-emerald-600 mb-1">${totalCatKg.toFixed(2)} কেজি</p>
+                        <p class="text-[10px] bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 py-0.5 rounded-full px-1">ঘর প্রতি: ${perHouseCatKg.toFixed(2)} কেজি</p>
+                    </div>`;
+            });
+
+            renderHouseTableHeader(catSocTotal, houseCount);
+            renderHouseDistribution(socM / houseCount);
+            lucide.createIcons();
+        }
+
+        function renderHouseTableHeader(catSocTotal, houseCount) {
+            const header = document.getElementById('houseTableHeader');
+            const houseCategories = categories.slice(0, 4);
+
+            header.innerHTML = `
+                <th class="p-5 border-b min-w-[200px]">ঘর ও সদস্যের নাম</th>
+                <th class="p-5 border-b text-right">মোট (কেজি)</th>
+                ${houseCategories.map(cat => `
+                    <th class="p-4 border-b text-center min-w-[110px]">
+                        <div class="flex flex-col items-center gap-1">
+                            <span>${cat.short}</span>
+                            <span class="text-[9px] normal-case font-semibold text-emerald-600 dark:text-emerald-400">
+                                ${((catSocTotal[cat.id] || 0) / houseCount).toFixed(2)} কেজি
+                            </span>
+                        </div>
+                    </th>
+                `).join('')}
+            `;
+        }
+
+        function renderHouseDistribution(perHouse) {
+            const body = document.getElementById('houseTableBody');
+            body.innerHTML = '';
+            state.society.houses.forEach((h, i) => {
+                body.innerHTML += `
+                    <tr class="hover:bg-slate-50 dark:hover:bg-slate-800 transition">
+                        <td class="p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                            <span class="text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">ঘর ${i+1}</span>
+                            <input type="text" class="house-name-input font-medium" value="${h.name}" placeholder="নাম..." onchange="updateHouseName(${i}, this.value)">
+                        </td>
+                        <td class="p-4 text-right font-bold text-emerald-600">${perHouse.toFixed(2)} কেজি</td>
+                        <td class="p-4 text-center"><input type="checkbox" class="meat-check" ${h.checks.c1 ? 'checked' : ''} onclick="toggleHouseCheck(${i}, 'c1')"></td>
+                        <td class="p-4 text-center"><input type="checkbox" class="meat-check" ${h.checks.c2 ? 'checked' : ''} onclick="toggleHouseCheck(${i}, 'c2')"></td>
+                        <td class="p-4 text-center"><input type="checkbox" class="meat-check" ${h.checks.c3 ? 'checked' : ''} onclick="toggleHouseCheck(${i}, 'c3')"></td>
+                        <td class="p-4 text-center"><input type="checkbox" class="meat-check" ${h.checks.c4 ? 'checked' : ''} onclick="toggleHouseCheck(${i}, 'c4')"></td>
+                    </tr>`;
+            });
+        }
+
+        // --- ANIMAL MODAL HELPERS ---
+        function renderCatInputs() {
+            document.getElementById('catInputsGrid').innerHTML = categories.map(c => `
+                <div>
+                    <label class="text-[9px] font-bold uppercase opacity-50 block mb-1">${c.name}</label>
+                    <input type="number" step="0.1" data-id="${c.id}" oninput="validateWeights()" class="cat-field w-full p-2.5 bg-white dark:bg-slate-700 border rounded-xl text-center font-bold text-sm outline-none focus:ring-2 focus:ring-emerald-500">
+                </div>`).join('');
+        }
+
+        function validateWeights() {
+            const totalGoal = parseFloat(document.getElementById('m_usableMeat').value) || 0;
+            let currentEntered = 0;
+            document.querySelectorAll('.cat-field').forEach(i => currentEntered += parseFloat(i.value) || 0);
+            const badge = document.getElementById('weightBadge');
+            const progress = document.getElementById('weightProgress');
+            badge.innerText = `এন্ট্রি: ${currentEntered.toFixed(2)} / ${totalGoal.toFixed(2)}`;
+            let perc = totalGoal > 0 ? (currentEntered / totalGoal) * 100 : 0;
+            progress.style.width = Math.min(100, perc) + '%';
+            if (currentEntered > totalGoal + 0.1) {
+                badge.className = "text-[10px] font-bold px-3 py-1 rounded-full bg-red-100 text-red-600 animate-pulse";
+                progress.className = "bg-red-500 h-full transition-all duration-300";
+                document.getElementById('saveBtn').disabled = true;
+            } else {
+                badge.className = "text-[10px] font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-700";
+                progress.className = "bg-emerald-500 h-full transition-all duration-300";
+                document.getElementById('saveBtn').disabled = false;
+            }
+        }
+
+        function toggleCard(contentId, iconId) {
+            const c = document.getElementById(contentId);
+            const i = document.getElementById(iconId);
+            c.classList.toggle('open');
+            if(i) i.classList.toggle('active');
+        }
+
+        function toggleAllCards() {
+            const cards = document.querySelectorAll('#animalContainer .collapsible-content');
+            const icons = document.querySelectorAll('#animalContainer .rotate-icon');
+            const isAnyOpen = Array.from(cards).some(c => c.classList.contains('open'));
+            cards.forEach(c => isAnyOpen ? c.classList.remove('open') : c.classList.add('open'));
+            icons.forEach(i => isAnyOpen ? i.classList.remove('active') : i.classList.add('active'));
+        }
+
+        // --- DATA MGMT ---
+        function addShRow(n = "", p = 1) {
+            const d = document.createElement('div');
+            d.className = "flex gap-2 bg-white dark:bg-slate-700 p-2 rounded-2xl border dark:border-slate-800 shadow-sm";
+            d.innerHTML = `<input type="text" placeholder="নাম" class="sh-n flex-1 p-2 bg-transparent text-sm outline-none font-medium" value="${n}"><input type="number" class="sh-p w-12 p-2 bg-slate-50 dark:bg-slate-800 rounded-lg font-bold text-center" value="${p}"><button type="button" onclick="this.parentElement.remove()" class="text-red-400 p-1"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`;
+            document.getElementById('shListGrid').appendChild(d);
+            lucide.createIcons();
+        }
+
+        function handleAnimalSubmit(e) {
+            e.preventDefault();
+            const catWeights = {};
+            document.querySelectorAll('.cat-field').forEach(i => catWeights[i.dataset.id] = parseFloat(i.value) || 0);
+            const shareholders = Array.from(document.querySelectorAll('#shListGrid > div')).map(r => ({ name: r.querySelector('.sh-n').value, parts: parseFloat(r.querySelector('.sh-p').value) || 0 })).filter(s => s.name);
+            const data = { id: editingId || Date.now(), name: document.getElementById('m_animalName').value, type: document.getElementById('m_animalType').value, usableMeat: parseFloat(document.getElementById('m_usableMeat').value), catWeights, shareholders };
+            if (editingId) { state.animals[state.animals.findIndex(a => a.id === editingId)] = data; } else { state.animals.push(data); }
+            saveAndRefresh(); closeAnimalModal(); showToast("সংরক্ষিত হয়েছে");
+        }
+
+        function openAnimalModal(id = null) {
+            editingId = id;
+            document.getElementById('animalForm').reset();
+            document.getElementById('shListGrid').innerHTML = '';
+            if(id) {
+                const a = state.animals.find(x => x.id === id);
+                document.getElementById('m_animalName').value = a.name;
+                document.getElementById('m_animalType').value = a.type;
+                document.getElementById('m_usableMeat').value = a.usableMeat;
+                document.querySelectorAll('.cat-field').forEach(i => i.value = a.catWeights[i.dataset.id] || 0);
+                a.shareholders.forEach(s => addShRow(s.name, s.parts));
+            } else { addShRow("", 1); }
+            document.getElementById('animalModal').classList.replace('hidden', 'flex');
+            validateWeights();
+        }
+
+        function closeAnimalModal() { document.getElementById('animalModal').classList.replace('flex', 'hidden'); }
+        function deleteAnimal(id) { if(confirm('মুছে ফেলতে চান?')) { state.animals = state.animals.filter(a => a.id !== id); saveAndRefresh(); } }
+        function saveLocalState() { localStorage.setItem(LOCAL_STATE_KEY, JSON.stringify(normalizeState(state))); }
+        function saveData() {
+            saveLocalState();
+            if (supabaseConfig.enabled && supabaseClient) {
+                void saveCloudData(false);
+            }
+        }
+        function saveAndRefresh() { saveData(); calculateAndRender(); }
+        function updateUI() { document.getElementById('header-title').innerText = state.society.name; calculateAndRender(); }
+        function updateHouseName(index, name) { state.society.houses[index].name = name; saveData(); }
+        function toggleHouseCheck(index, catId) {
+            state.society.houses[index].checks[catId] = !state.society.houses[index].checks[catId];
+            saveData();
+        }
+        function showToast(m) { const t = document.getElementById('toast'); document.getElementById('toastMsg').innerText = m; t.classList.remove('translate-y-40'); setTimeout(() => t.classList.add('translate-y-40'), 3000); }
+        window.onload = init;
+    </script>
+</body>
+</html>
