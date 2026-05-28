@@ -299,8 +299,8 @@
     </div>
 
     <!-- ANIMAL MODAL -->
-    <div id="animalModal" onclick="handleModalBackdropClick(event, 'animalModal')" class="fixed inset-0 bg-slate-900/90 hidden items-center justify-center z-[100] p-2 sm:p-4 overflow-y-auto no-print">
-        <div onclick="event.stopPropagation()" class="bg-white dark:bg-slate-900 w-full max-w-4xl rounded-[2.5rem] shadow-2xl overflow-hidden my-10 animate-in zoom-in duration-300">
+    <div id="animalModal" onclick="handleModalBackdropClick(event, 'animalModal')" class="fixed inset-0 bg-slate-900/90 hidden items-start sm:items-center justify-center z-[100] px-2 py-4 sm:p-4 overflow-y-auto no-print">
+        <div onclick="event.stopPropagation()" class="bg-white dark:bg-slate-900 w-full max-w-4xl rounded-[2.5rem] shadow-2xl overflow-hidden my-auto animate-in zoom-in duration-300">
             <div class="islamic-gradient p-5 text-white flex justify-between items-center sticky top-0 z-20">
                 <h3 class="font-bold flex items-center gap-2 text-lg"><i data-lucide="plus-circle"></i> পশুর তথ্য ও বন্টন</h3>
                 <button onclick="closeAnimalModal()" class="bg-white/20 p-1 rounded-full hover:bg-white/40"><i data-lucide="x"></i></button>
@@ -829,6 +829,7 @@
 
         function openAnimalModal(id = null) {
             editingId = id;
+            const modal = document.getElementById('animalModal');
             document.getElementById('animalForm').reset();
             document.getElementById('shListGrid').innerHTML = '';
             if(id) {
@@ -840,6 +841,7 @@
                 a.shareholders.forEach(s => addShRow(s.name, s.parts));
             } else { addShRow("", 1); }
             setModalVisibility('animalModal', true);
+            if (modal) modal.scrollTop = 0;
             validateWeights();
         }
 
