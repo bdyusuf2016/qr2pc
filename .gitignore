@@ -1,0 +1,10 @@
+# PyInstaller build directories
+build/
+dist/
+
+# Application configuration & credentials
+serviceAccountKey.json
+
+# Python caching
+__pycache__/
+*.pyc
