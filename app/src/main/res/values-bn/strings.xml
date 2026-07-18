@@ -1,0 +1,63 @@
+<resources>
+    <string name="app_name">QR 2 PC by Yusuf</string>
+    <string name="version_label">ভার্সন ২.৩</string>
+
+    <!-- Sidebar -->
+    <string name="menu_scanner">স্ক্যানার</string>
+    <string name="menu_settings">সেটিংস</string>
+    <string name="menu_history">স্ক্যান হিস্ট্রি</string>
+    <string name="menu_help">হেল্প</string>
+    <string name="menu_about">ডেভেলপার ইনফো</string>
+    <string name="menu_share">অ্যাপ শেয়ার করুন</string>
+
+    <!-- Scanner -->
+    <string name="status_connected_local">কানেক্টেড (লোকাল)</string>
+    <string name="status_connected_cloud">কানেক্টেড (ক্লাউড)</string>
+    <string name="status_disconnected">ডিসকানেক্টেড</string>
+    <string name="mode_qr_barcode">কিউআর / বারকোড</string>
+    <string name="mode_text_ocr">টেক্সট (ওসিআর)</string>
+    <string name="batch_on">ব্যাচ</string>
+    <string name="batch_off">সিংগেল</string>
+    <string name="captured_text">ক্যাপচার করা টেক্সট:</string>
+    <string name="live_text_hint">টেক্সটের দিকে ক্যামেরা ধরুন</string>
+    <string name="btn_gallery">গ্যালারি</string>
+    <string name="btn_history">হিস্ট্রি</string>
+    <string name="btn_flash">ফ্ল্যাশ</string>
+    <string name="toast_sent_success">পাঠানো হয়েছে</string>
+    <string name="toast_sent_failed">পাঠানো ব্যর্থ হয়েছে</string>
+    <string name="toast_auto_paired">পিসির সাথে অটো-পেয়ার হয়েছে:</string>
+
+    <!-- Settings -->
+    <string name="conn_settings">কানেকশন সেটিংস</string>
+    <string name="pairing_id_label">পেয়ারিং আইডি</string>
+    <string name="server_ip_label">সার্ভার আইপি (ঐচ্ছিক)</string>
+    <string name="btn_save">সেভ করুন</string>
+    <string name="scan_settings">স্ক্যান সেটিংস</string>
+    <string name="setting_duplicates">ডুপ্লিকেট রেকর্ড অনুমতি দিন</string>
+    <string name="setting_duplicates_desc">অন থাকলে একই কোড বারবার স্ক্যান হবে।</string>
+    <string name="setting_sound">সাউন্ড ফিডব্যাক</string>
+    <string name="setting_sound_desc">সফল স্ক্যানের পর শব্দ হবে।</string>
+    <string name="setting_vibration">ভাইব্রেশন ফিডব্যাক</string>
+    <string name="setting_vibration_desc">সফল স্ক্যানের পর ফোন ভাইব্রেট করবে।</string>
+    <string name="setting_batch">ব্যাচ স্ক্যান মোড</string>
+    <string name="setting_batch_desc">বিরতি ছাড়াই দ্রুত স্ক্যান করার জন্য।</string>
+    <string name="setting_split">স্প্লিট / সাফিক্স ক্যারেক্টার</string>
+    <string name="setting_language">অ্যাপের ভাষা</string>
+    <string name="lang_sys">সিস্টেম ডিফল্ট</string>
+    <string name="lang_en">English</string>
+    <string name="lang_bn">বাংলা</string>
+    <string name="data_processing">ডাটা প্রসেসিং</string>
+
+    <!-- History -->
+    <string name="history_title">স্ক্যান লগ</string>
+    <string name="history_clear_all">সব হিস্ট্রি মুছে ফেলুন</string>
+    <string name="history_empty">এখনো কোনো স্ক্যান করা হয়নি</string>
+
+    <!-- Help -->
+    <string name="help_title">কিভাবে কিউআর টু পিসি ব্যবহার করবেন</string>
+    <string name="help_step1_title">১. পিসি লিসেনার সেটাপ করুন</string>
+    <string name="help_step1_desc">পিসি স্ক্রিপ্টটি ডাউনলোড করে রান করুন। এটি আপনার স্ক্যান অটোমেটিক টাইপ করবে।</string>
+    <string name="help_step2_title">২. ওয়াইফাই কানেক্ট করুন</string>
+    <string name="help_step2_desc">ফোন এবং পিসি একই নেটওয়ার্কে থাকলে দ্রুত পেয়ার হবে।</string>
+    <string name="help_download_btn">পিসি লিসেনার (EXE) ডাউনলোড করুন</string>
+</resources>

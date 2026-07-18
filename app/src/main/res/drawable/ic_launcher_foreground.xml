@@ -1,0 +1,28 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- QR Code Silhouette (Left) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M25,35h15v15h-15zM28,38v9h9v-9h-9zM31,41h3v3h-3z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M25,55h15v15h-15zM28,58v9h9v-9h-9zM31,61h3v3h-3z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M45,35h15v15h-15zM48,38v9h9v-9h-9zM51,41h3v3h-3z" />
+
+    <!-- Transmission Arrow -->
+    <path
+        android:fillColor="#00E676"
+        android:pathData="M60,54l8,0l0,-4l6,6l-6,6l0,-4l-8,0z" />
+
+    <!-- PC / Monitor (Right) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M75,40h20v14h-20zM73,38v18h24v-18h-24zM80,56h10v2h-10zM78,58h14v2h-14z" />
+
+</vector>
