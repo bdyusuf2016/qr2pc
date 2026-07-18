@@ -48,4 +48,25 @@ class FirebaseManager {
         serverRef.addValueEventListener(listener)
         awaitClose { serverRef.removeEventListener(listener) }
     }
+
+    fun linkDevice(token: String, pairingId: String, name: String, onResult: (Boolean) -> Unit) {
+        val pairingRef = database.getReference("pairing/$token")
+        val data = mapOf(
+            "pairingId" to pairingId,
+            "deviceName" to name,
+            "timestamp" to System.currentTimeMillis()
+        )
+        pairingRef.setValue(data).addOnCompleteListener { onResult(it.isSuccessful) }
+    }
+
+    fun unlinkDevice(pairingId: String) {
+        database.getReference("servers/$pairingId/status").setValue("unlinked")
+        database.getReference("pairing").orderByChild("pairingId").equalTo(pairingId)
+            .addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    snapshot.children.forEach { it.ref.removeValue() }
+                }
+                override fun onCancelled(error: DatabaseError) {}
+            })
+    }
 }

@@ -13,6 +13,7 @@ import android.os.Vibrator
 import android.provider.MediaStore
 import android.util.Log
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.*
@@ -30,6 +31,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -42,12 +44,16 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -55,6 +61,7 @@ import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.yusuftech.qr2pc.data.AppDatabase
@@ -62,15 +69,19 @@ import com.yusuftech.qr2pc.data.FirebaseManager
 import com.yusuftech.qr2pc.data.PreferencesManager
 import com.yusuftech.qr2pc.data.ScanHistory
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.Executors
+import androidx.compose.foundation.gestures.detectTapGestures
+import org.json.JSONArray
+import org.json.JSONObject
 
 @androidx.annotation.OptIn(ExperimentalGetImage::class)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ScannerScreen(modifier: Modifier = Modifier) {
+fun ScannerScreen(modifier: Modifier = Modifier, onMenuClick: () -> Unit = {}) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
@@ -86,7 +97,6 @@ fun ScannerScreen(modifier: Modifier = Modifier) {
     val batchMode by preferencesManager.batchMode.collectAsState(initial = false)
     val savedScanMode by preferencesManager.scanMode.collectAsState(initial = "QR")
 
-    // Use rememberUpdatedState so the Camera Analyzer closure always sees the LATEST values
     val currentPairingId by rememberUpdatedState(pairingId)
     val currentBatchMode by rememberUpdatedState(batchMode)
     val currentAllowDuplicates by rememberUpdatedState(allowDuplicates)
@@ -97,14 +107,29 @@ fun ScannerScreen(modifier: Modifier = Modifier) {
     val currentVibrationEnabled by rememberUpdatedState(vibrationEnabled)
 
     var scanMode by remember(savedScanMode) { mutableStateOf(savedScanMode) }
-    var liveText by remember { mutableStateOf("") }
-    var detectedText by remember { mutableStateOf("") }
     var isCaptured by remember { mutableStateOf(false) }
+    var capturedBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var detectedLines by remember { mutableStateOf<List<Text.Line>>(emptyList()) }
+    var textBuffer by remember { mutableStateOf("") }
+    
     var zoomRatio by remember { mutableFloatStateOf(0f) }
+    var lensFacing by remember { mutableStateOf(CameraSelector.LENS_FACING_BACK) }
     
     val database = remember { AppDatabase.getDatabase(context) }
     val scanHistory by database.scanHistoryDao().getAllHistory().collectAsState(initial = emptyList())
     val firebaseManager = remember { FirebaseManager() }
+    
+    val linkedDevicesJson by preferencesManager.linkedDevices.collectAsState(initial = "[]")
+    val activeDevice = remember(linkedDevicesJson, pairingId) {
+        try {
+            val arr = JSONArray(linkedDevicesJson)
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                if (obj.getString("id") == pairingId) return@remember obj.getString("name")
+            }
+        } catch (e: Exception) {}
+        "Default PC"
+    }
 
     var lastLocalPacketTime by remember { mutableLongStateOf(0L) }
     val serverLastSeen by firebaseManager.getServerLastSeen(pairingId).collectAsState(initial = null)
@@ -135,6 +160,7 @@ fun ScannerScreen(modifier: Modifier = Modifier) {
     var lastScannedCode by remember { mutableStateOf<String?>(null) }
     var isProcessing by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState()
 
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
@@ -147,7 +173,7 @@ fun ScannerScreen(modifier: Modifier = Modifier) {
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
-            processImageFromGallery(context, it, scanMode, scope, firebaseManager, pairingId, database, soundEnabled, vibrationEnabled)
+            processImageFromGallery(context, it, scanMode, scope, firebaseManager, currentPairingId, database, currentSoundEnabled, currentVibrationEnabled)
         }
     }
 
@@ -157,50 +183,10 @@ fun ScannerScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    // Auto-Discovery (UDP Listener)
-    LaunchedEffect(key1 = true) {
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val socket = java.net.DatagramSocket(8888)
-                socket.broadcast = true
-                val buffer = ByteArray(1024)
-                
-                while (true) {
-                    val packet = java.net.DatagramPacket(buffer, buffer.size)
-                    socket.receive(packet)
-                    val message = String(packet.data, 0, packet.length)
-                    
-                    try {
-                        val json = org.json.JSONObject(message)
-                        if (json.getString("type") == "QR2PC_SERVER") {
-                            val discoveredPairingId = json.getString("pairingId")
-                            val discoveredIp = json.getString("ip")
-                            
-                            if (pairingId == "0000" || pairingId != discoveredPairingId) {
-                                scope.launch {
-                                    preferencesManager.setPairingId(discoveredPairingId)
-                                    preferencesManager.saveServerIp(discoveredIp)
-                                    Toast.makeText(context, "Auto-Paired: $discoveredPairingId", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                            lastLocalPacketTime = System.currentTimeMillis()
-                        }
-                    } catch (e: Exception) { }
-                }
-            } catch (e: Exception) {
-                Log.e("Discovery", "UDP Listener failed", e)
-            }
-        }
-    }
-
-    // Safety Timeout: If isProcessing stays true for too long, reset it
     LaunchedEffect(isProcessing) {
         if (isProcessing) {
-            delay(10000) // 10 seconds timeout
-            if (isProcessing) {
-                Log.w("ScannerScreen", "Safety Timeout: Resetting isProcessing state")
-                isProcessing = false
-            }
+            delay(10000)
+            if (isProcessing) isProcessing = false
         }
     }
 
@@ -215,9 +201,9 @@ fun ScannerScreen(modifier: Modifier = Modifier) {
 
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
     var camera by remember { mutableStateOf<Camera?>(null) }
+    val imageCapture = remember { ImageCapture.Builder().build() }
     var isFlashOn by remember { mutableStateOf(false) }
     
-    // ML Kit Clients remembered to avoid constant re-instantiation
     val barcodeScanner = remember { 
         BarcodeScanning.getClient(
             BarcodeScannerOptions.Builder()
@@ -226,20 +212,16 @@ fun ScannerScreen(modifier: Modifier = Modifier) {
         ) 
     }
     val textRecognizer = remember { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
-    
-    val sheetState = rememberModalBottomSheetState()
 
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
             factory = { ctx ->
                 val previewView = PreviewView(ctx)
-                val executor = ContextCompat.getMainExecutor(ctx)
                 cameraProviderFuture.addListener({
                     val cameraProvider = cameraProviderFuture.get()
                     val preview = Preview.Builder().build().also {
                         it.setSurfaceProvider(previewView.surfaceProvider)
                     }
-
                     val analyzer = ImageAnalysis.Builder()
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                         .setTargetResolution(android.util.Size(1280, 720))
@@ -249,776 +231,476 @@ fun ScannerScreen(modifier: Modifier = Modifier) {
                                 val mediaImage = imageProxy.image
                                 if (mediaImage != null) {
                                     val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-                                    
                                     if (scanMode == "QR") {
                                         barcodeScanner.process(image)
                                             .addOnSuccessListener { barcodes ->
                                                 if (isProcessing || barcodes.isEmpty()) return@addOnSuccessListener
-                                                
                                                 val code = barcodes[0].rawValue ?: return@addOnSuccessListener
-                                                Log.d("ScannerScreen", "QR Detected: $code")
                                                 
-                                                if (!currentAllowDuplicates && code == lastScannedCode) {
+                                                if (code.startsWith("QR2PC:PAIR:")) {
+                                                    handleScanResult(code, "QR", scope, firebaseManager, currentPairingId, database, currentDataProcessingMode, currentDataProcessingValue, currentSplitCharacter, currentSoundEnabled, currentVibrationEnabled, currentBatchMode, context) {
+                                                        isProcessing = it
+                                                    }
                                                     return@addOnSuccessListener
                                                 }
-                                                
-                                                handleScanResult(
-                                                    code = code,
-                                                    type = "QR",
-                                                    scope = scope,
-                                                    firebaseManager = firebaseManager,
-                                                    pairingId = currentPairingId,
-                                                    database = database,
-                                                    dataProcessingMode = currentDataProcessingMode,
-                                                    dataProcessingValue = currentDataProcessingValue,
-                                                    splitCharacter = currentSplitCharacter,
-                                                    soundEnabled = currentSoundEnabled,
-                                                    vibrationEnabled = currentVibrationEnabled,
-                                                    batchMode = currentBatchMode,
-                                                    context = context
-                                                ) { processing ->
-                                                    isProcessing = processing
-                                                    if (!processing) {
-                                                        lastScannedCode = code
+
+                                                if (!currentAllowDuplicates && code == lastScannedCode) {
+                                                    scope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                                                        Toast.makeText(context, "Duplicate scan blocked", Toast.LENGTH_SHORT).show()
                                                     }
+                                                    return@addOnSuccessListener
+                                                }
+                                                handleScanResult(code, "QR", scope, firebaseManager, currentPairingId, database, currentDataProcessingMode, currentDataProcessingValue, currentSplitCharacter, currentSoundEnabled, currentVibrationEnabled, currentBatchMode, context) {
+                                                    isProcessing = it
+                                                    if (!it) lastScannedCode = code
                                                 }
                                             }
-                                            .addOnFailureListener { e ->
-                                                Log.e("ScannerScreen", "Barcode detection failed", e)
-                                            }
-                                            .addOnCompleteListener {
-                                                imageProxy.close()
-                                            }
+                                            .addOnCompleteListener { imageProxy.close() }
                                     } else {
-                                        // Text Mode
-                                        textRecognizer.process(image)
-                                            .addOnSuccessListener { visionText ->
-                                                if (visionText.text.isNotEmpty()) {
-                                                    if (!isCaptured) {
-                                                        liveText = visionText.text
-                                                    }
-                                                }
-                                            }
-                                            .addOnFailureListener { e ->
-                                                Log.e("ScannerScreen", "Text detection failed", e)
-                                            }
-                                            .addOnCompleteListener {
-                                                imageProxy.close()
-                                            }
+                                        imageProxy.close()
                                     }
-                                } else {
-                                    imageProxy.close()
-                                }
+                                } else { imageProxy.close() }
                             }
                         }
 
-                    val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-
                     try {
                         cameraProvider.unbindAll()
-                        camera = cameraProvider.bindToLifecycle(
-                            lifecycleOwner,
-                            cameraSelector,
-                            preview,
-                            analyzer
-                        )
-                        // Initialize zoom to current state
+                        camera = cameraProvider.bindToLifecycle(lifecycleOwner, CameraSelector.Builder().requireLensFacing(lensFacing).build(), preview, analyzer, imageCapture)
                         camera?.cameraControl?.setLinearZoom(zoomRatio)
-                    } catch (e: Exception) {
-                        Log.e("ScannerScreen", "Use case binding failed", e)
-                    }
-                }, executor)
+                    } catch (e: Exception) { Log.e("ScannerScreen", "Bind failed", e) }
+                }, ContextCompat.getMainExecutor(ctx))
                 previewView
             },
             modifier = Modifier.fillMaxSize()
         )
 
-        // Scanner Overlay (Hole Design)
-        if (scanMode == "QR") {
+        // Overlay Icons (Top)
+        if (!isCaptured) {
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = 120.dp),
-                contentAlignment = Alignment.Center
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(16.dp)
+                    .align(Alignment.TopCenter)
             ) {
-                // Dimmed Background with clear center
+                IconButton(
+                    onClick = onMenuClick,
+                    modifier = Modifier.align(Alignment.CenterStart)
+                ) { Icon(Icons.Default.Menu, null, tint = Color.White) }
+                
+                Row(
+                    modifier = Modifier.align(Alignment.CenterEnd),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = { photoPickerLauncher.launch("image/*") }) { Icon(Icons.Default.Photo, null, tint = Color.White) }
+                    IconButton(onClick = { 
+                        isFlashOn = !isFlashOn
+                        camera?.cameraControl?.enableTorch(isFlashOn)
+                    }) { Icon(if(isFlashOn) Icons.Default.FlashOn else Icons.Default.FlashOff, null, tint = Color.White) }
+                    IconButton(onClick = { 
+                        lensFacing = if(lensFacing == CameraSelector.LENS_FACING_BACK) CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK 
+                    }) { Icon(Icons.Default.Cameraswitch, null, tint = Color.White) }
+                    IconButton(onClick = { scope.launch { preferencesManager.setBatchMode(!batchMode) } }) {
+                        Icon(if(batchMode) Icons.Default.FilterNone else Icons.Default.CropFree, null, tint = if(batchMode) Color.Yellow else Color.White)
+                    }
+                    IconButton(onClick = { showHistory = true }) { Icon(Icons.Default.History, null, tint = Color.White) }
+                }
+            }
+        }
+
+        // Scan Frame (Only in QR mode)
+        if (scanMode == "QR" && !isCaptured) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
-                    val frameSize = 260.dp.toPx()
+                    val frameSize = 300.dp.toPx()
                     val left = (size.width - frameSize) / 2
                     val top = (size.height - frameSize) / 2
                     val rect = Rect(left, top, left + frameSize, top + frameSize)
-                    
-                    // Draw outer dimming
-                    drawPath(
-                        Path().apply {
-                            addRect(Rect(0f, 0f, size.width, size.height))
-                            addRoundRect(androidx.compose.ui.geometry.RoundRect(rect, cornerRadius = androidx.compose.ui.geometry.CornerRadius(12.dp.toPx())))
-                            fillType = androidx.compose.ui.graphics.PathFillType.EvenOdd
-                        },
-                        color = Color.Black.copy(alpha = 0.5f)
+                    drawPath(Path().apply {
+                        addRect(Rect(0f, 0f, size.width, size.height))
+                        addRoundRect(androidx.compose.ui.geometry.RoundRect(rect, cornerRadius = androidx.compose.ui.geometry.CornerRadius(12.dp.toPx())))
+                        fillType = androidx.compose.ui.graphics.PathFillType.EvenOdd
+                    }, color = Color.Black.copy(alpha = 0.6f))
+                }
+                Box(modifier = Modifier.size(300.dp)) {
+                    val infiniteTransition = rememberInfiniteTransition(label = "laser")
+                    val laserAlpha by infiniteTransition.animateFloat(
+                        initialValue = 0.2f,
+                        targetValue = 0.8f,
+                        animationSpec = infiniteRepeatable(animation = tween(800, easing = LinearEasing), repeatMode = RepeatMode.Reverse),
+                        label = "laserAlpha"
                     )
-                }
-
-                Box(
-                    modifier = Modifier.size(260.dp)
-                ) {
-                    // Static Laser Line (Middle)
                     Canvas(modifier = Modifier.fillMaxSize()) {
-                        val midY = size.height / 2
-                        drawLine(
-                            brush = Brush.verticalGradient(
-                                colors = listOf(Color.Red.copy(alpha = 0f), Color.Red, Color.Red.copy(alpha = 0f)),
-                                startY = midY - 15,
-                                endY = midY + 15
-                            ),
-                            start = Offset(20f, midY),
-                            end = Offset(size.width - 20f, midY),
-                            strokeWidth = 3f
-                        )
+                        drawLine(Color.Red.copy(alpha = laserAlpha), Offset(10f, size.height / 2), Offset(size.width - 10f, size.height / 2), 3f)
                     }
-
-                    // Four Corners
                     Canvas(modifier = Modifier.fillMaxSize()) {
-                        val strokeWidth = 8f
-                        val cornerLen = 40f
-                        val color = Color.White
-                        
-                        // Top Left
-                        drawLine(color, Offset(0f, 0f), Offset(cornerLen, 0f), strokeWidth)
-                        drawLine(color, Offset(0f, 0f), Offset(0f, cornerLen), strokeWidth)
-                        
-                        // Top Right
-                        drawLine(color, Offset(size.width, 0f), Offset(size.width - cornerLen, 0f), strokeWidth)
-                        drawLine(color, Offset(size.width, 0f), Offset(size.width, cornerLen), strokeWidth)
-                        
-                        // Bottom Left
-                        drawLine(color, Offset(0f, size.height), Offset(cornerLen, size.height), strokeWidth)
-                        drawLine(color, Offset(0f, size.height), Offset(0f, size.height - cornerLen), strokeWidth)
-                        
-                        // Bottom Right
-                        drawLine(color, Offset(size.width, size.height), Offset(size.width - cornerLen, size.height), strokeWidth)
-                        drawLine(color, Offset(size.width, size.height), Offset(size.width, size.height - cornerLen), strokeWidth)
-                        
-                        // Thin connecting lines
-                        val thinWidth = 1f
-                        drawRect(color.copy(alpha = 0.3f), Offset(0f, 0f), size, style = androidx.compose.ui.graphics.drawscope.Stroke(thinWidth))
+                        val stroke = 12f; val len = 40f; val color = Color(0xFF4285F4)
+                        drawLine(color, Offset(0f,0f), Offset(len,0f), stroke)
+                        drawLine(color, Offset(0f,0f), Offset(0f,len), stroke)
+                        drawLine(color, Offset(size.width,0f), Offset(size.width-len,0f), stroke)
+                        drawLine(color, Offset(size.width,0f), Offset(size.width,len), stroke)
+                        drawLine(color, Offset(0f,size.height), Offset(len,size.height), stroke)
+                        drawLine(color, Offset(0f,size.height), Offset(0f,size.height-len), stroke)
+                        drawLine(color, Offset(size.width,size.height), Offset(size.width-len,size.height), stroke)
+                        drawLine(color, Offset(size.width,size.height), Offset(size.width,size.height-len), stroke)
                     }
                 }
             }
         }
 
-        // Top Controls
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp, start = 8.dp, end = 8.dp)
-                .align(Alignment.TopCenter)
-        ) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.6f)),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column {
-                        Text(
-                            text = "ID: $pairingId",
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .background(
-                                        when (pcConnectionStatus) {
-                                            1 -> Color.Green
-                                            2 -> Color.Yellow
-                                            else -> Color.Red
-                                        },
-                                        CircleShape
-                                    )
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = when(pcConnectionStatus) {
-                                    1 -> stringResource(com.yusuftech.qr2pc.R.string.status_connected_local)
-                                    2 -> stringResource(com.yusuftech.qr2pc.R.string.status_connected_cloud)
-                                    else -> stringResource(com.yusuftech.qr2pc.R.string.status_disconnected)
-                                },
-                                color = Color.White.copy(alpha = 0.7f),
-                                style = MaterialTheme.typography.labelSmall
-                            )
-                        }
-                    }
-                    
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Duplicate Toggle
-                        Surface(
-                            onClick = {
-                                scope.launch { preferencesManager.setAllowDuplicates(!allowDuplicates) }
-                            },
-                            color = if (allowDuplicates) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else Color.Transparent,
-                            shape = CircleShape,
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = if (allowDuplicates) Icons.Default.RepeatOn else Icons.Default.Repeat,
-                                    contentDescription = "Toggle Duplicates",
-                                    tint = if (allowDuplicates) MaterialTheme.colorScheme.primary else Color.White,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-                        
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        // Batch Mode Toggle
-                        Surface(
-                            onClick = {
-                                scope.launch { preferencesManager.setBatchMode(!batchMode) }
-                            },
-                            color = if (batchMode) Color.Yellow.copy(alpha = 0.2f) else Color.Transparent,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.height(40.dp).padding(horizontal = 4.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = if (batchMode) Icons.Default.Bolt else Icons.Default.FlashOff,
-                                    contentDescription = null,
-                                    tint = if (batchMode) Color.Yellow else Color.White,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = if (batchMode) stringResource(com.yusuftech.qr2pc.R.string.batch_on) else stringResource(com.yusuftech.qr2pc.R.string.batch_off),
-                                    color = Color.White,
-                                    style = MaterialTheme.typography.labelMedium
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Mode Switcher
-            Row(
-                modifier = Modifier
-                    .padding(top = 12.dp)
-                    .align(Alignment.CenterHorizontally)
-                    .background(Color.Black.copy(alpha = 0.7f), CircleShape)
-                    .padding(4.dp)
-            ) {
-                ModeButton(stringResource(com.yusuftech.qr2pc.R.string.mode_qr_barcode), scanMode == "QR") {
-                    scanMode = "QR"
-                    detectedText = ""
-                    liveText = ""
-                    isCaptured = false
-                    scope.launch { preferencesManager.setScanMode("QR") }
-                }
-                ModeButton(stringResource(com.yusuftech.qr2pc.R.string.mode_text_ocr), scanMode == "TEXT") {
-                    scanMode = "TEXT"
-                    scope.launch { preferencesManager.setScanMode("TEXT") }
+        // Zoom Slider (Bottom)
+        if (!isCaptured) {
+            Column(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 140.dp, start = 48.dp, end = 48.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.ZoomOut, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                    Slider(
+                        value = zoomRatio,
+                        onValueChange = { zoomRatio = it; camera?.cameraControl?.setLinearZoom(it) },
+                        modifier = Modifier.weight(1f).height(20.dp),
+                        colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White, inactiveTrackColor = Color.White.copy(alpha = 0.3f))
+                    )
+                    Icon(Icons.Default.ZoomIn, null, tint = Color.White, modifier = Modifier.size(18.dp))
                 }
             }
         }
 
-        // Live Text Preview (Overlay when not captured)
-        AnimatedVisibility(
-            visible = scanMode == "TEXT" && !isCaptured && liveText.isNotEmpty(),
-            modifier = Modifier
-                .align(Alignment.Center)
-                .padding(16.dp)
-        ) {
-            Surface(
-                color = Color.Black.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Text(
-                    text = if (liveText.isEmpty()) stringResource(com.yusuftech.qr2pc.R.string.live_text_hint) else (liveText.take(100) + if (liveText.length > 100) "..." else ""),
-                    color = Color.White.copy(alpha = 0.8f),
-                    modifier = Modifier.padding(8.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
-
-        // Capture Button (Shutter)
+        // Shutter Button (TEXT Mode)
         if (scanMode == "TEXT" && !isCaptured) {
-            Box(
+            FloatingActionButton(
+                onClick = {
+                    isProcessing = true
+                    imageCapture.takePicture(ContextCompat.getMainExecutor(context), object : ImageCapture.OnImageCapturedCallback() {
+                        override fun onCaptureSuccess(imageProxy: ImageProxy) {
+                            val bitmap = imageProxy.toBitmapCustom()
+                            val rotated = rotateBitmap(bitmap, imageProxy.imageInfo.rotationDegrees)
+                            imageProxy.close()
+                            textRecognizer.process(InputImage.fromBitmap(rotated, 0)).addOnSuccessListener {
+                                capturedBitmap = rotated
+                                // Granular detection: Extract lines
+                                detectedLines = it.textBlocks.flatMap { b -> b.lines }
+                                isCaptured = true
+                                isProcessing = false
+                                provideFeedback(context, scope, false, vibrationEnabled)
+                            }
+                        }
+                        override fun onError(e: ImageCaptureException) { isProcessing = false }
+                    })
+                },
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 180.dp),
+                shape = CircleShape,
+                containerColor = Color.White
+            ) { Box(modifier = Modifier.size(60.dp).border(4.dp, Color.Gray, CircleShape)) }
+        }
+
+        // Mode Selection (Bottom)
+        if (!isCaptured) {
+            Row(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 120.dp)
+                    .padding(bottom = 60.dp)
+                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                    .padding(4.dp)
             ) {
-                Surface(
-                    modifier = Modifier
-                        .size(72.dp)
-                        .clickable {
-                            if (liveText.isNotEmpty()) {
-                                detectedText = liveText
-                                isCaptured = true
-                                provideFeedback(context, scope, false, vibrationEnabled) // Soft haptic
-                            }
-                        },
-                    shape = CircleShape,
-                    color = Color.White.copy(alpha = 0.3f),
-                    border = androidx.compose.foundation.BorderStroke(4.dp, Color.White)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(8.dp)
-                            .background(Color.White, CircleShape)
-                    )
-                }
+                ModeButton("QR/BARCODE", scanMode == "QR") { scanMode = "QR"; isCaptured = false }
+                ModeButton("TEXT", scanMode == "TEXT") { scanMode = "TEXT"; isCaptured = false }
             }
         }
 
-        // Manual Text Preview (Bottom Overlay - Captured)
-        AnimatedVisibility(
-            visible = scanMode == "TEXT" && isCaptured,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 100.dp, start = 16.dp, end = 16.dp)
-        ) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.8f)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(
-                        onClick = { 
-                            isCaptured = false 
-                        },
-                        modifier = Modifier.padding(end = 8.dp)
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Retake", tint = Color.White)
-                    }
-                    
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(com.yusuftech.qr2pc.R.string.captured_text),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = detectedText,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color.White,
-                            maxLines = 4,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    IconButton(
-                        onClick = {
-                            handleScanResult(
-                                code = detectedText,
-                                type = "TEXT",
-                                scope = scope,
-                                firebaseManager = firebaseManager,
-                                pairingId = currentPairingId,
-                                database = database,
-                                dataProcessingMode = "None",
-                                dataProcessingValue = "",
-                                splitCharacter = currentSplitCharacter,
-                                soundEnabled = currentSoundEnabled,
-                                vibrationEnabled = currentVibrationEnabled,
-                                batchMode = false,
-                                context = context
-                            ) {
-                                isProcessing = it
-                                if (!it) {
-                                    isCaptured = false
-                                    detectedText = ""
-                                }
-                            }
-                        },
-                        colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primary)
-                    ) {
-                        Icon(Icons.Default.Send, contentDescription = "Send to PC", tint = Color.White)
+        // Lens Selection View with Editor
+        if (isCaptured && capturedBitmap != null) {
+            BackHandler {
+                isCaptured = false
+                capturedBitmap = null
+                textBuffer = ""
+            }
+            
+            LensOCRView(
+                bitmap = capturedBitmap!!,
+                lines = detectedLines,
+                initialText = textBuffer,
+                onTextUpdate = { textBuffer = it },
+                onRetake = { isCaptured = false; capturedBitmap = null; textBuffer = "" },
+                onSend = {
+                    handleScanResult(textBuffer, "TEXT", scope, firebaseManager, currentPairingId, database, "None", "", currentSplitCharacter, currentSoundEnabled, currentVibrationEnabled, false, context) {
+                        isProcessing = it
+                        if(!it) { isCaptured = false; capturedBitmap = null; textBuffer = "" }
                     }
                 }
-            }
+            )
         }
 
-        // Zoom Control Slider
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 110.dp, start = 48.dp, end = 48.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.ZoomIn, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                Slider(
-                    value = zoomRatio,
-                    onValueChange = { 
-                        zoomRatio = it
-                        camera?.cameraControl?.setLinearZoom(it)
-                    },
-                    modifier = Modifier.weight(1f).height(32.dp),
-                    colors = SliderDefaults.colors(
-                        thumbColor = MaterialTheme.colorScheme.primary,
-                        activeTrackColor = MaterialTheme.colorScheme.primary,
-                        inactiveTrackColor = Color.White.copy(alpha = 0.3f)
-                    )
-                )
-            }
-        }
-
-        // Bottom Actions
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.4f))
-                    )
-                )
-                .padding(bottom = 32.dp, top = 16.dp, start = 24.dp, end = 24.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                FloatingActionButton(
-                    onClick = { photoPickerLauncher.launch("image/*") },
-                    containerColor = Color.White.copy(alpha = 0.2f),
-                    contentColor = Color.White,
-                    elevation = FloatingActionButtonDefaults.elevation(0.dp)
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.PhotoLibrary, contentDescription = "Gallery")
-                        Text(stringResource(com.yusuftech.qr2pc.R.string.btn_gallery), style = MaterialTheme.typography.labelSmall)
-                    }
-                }
-
-                Spacer(modifier = Modifier.weight(1f))
-
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    FloatingActionButton(
-                        onClick = { showHistory = true },
-                        containerColor = Color.White.copy(alpha = 0.2f),
-                        contentColor = Color.White,
-                        elevation = FloatingActionButtonDefaults.elevation(0.dp)
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.History, contentDescription = "History")
-                            Text(stringResource(com.yusuftech.qr2pc.R.string.btn_history), style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-
-                    FloatingActionButton(
-                        onClick = {
-                            val nextState = !isFlashOn
-                            camera?.cameraControl?.enableTorch(nextState)
-                            isFlashOn = nextState
-                        },
-                        containerColor = if (isFlashOn) Color.Yellow else Color.White.copy(alpha = 0.2f),
-                        contentColor = if (isFlashOn) Color.Black else Color.White,
-                        elevation = FloatingActionButtonDefaults.elevation(0.dp)
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                imageVector = if (isFlashOn) Icons.Default.FlashOn else Icons.Default.FlashOff,
-                                contentDescription = "Toggle Flash"
-                            )
-                            Text(stringResource(com.yusuftech.qr2pc.R.string.btn_flash), style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                }
-            }
-        }
-        
-        AnimatedVisibility(
-            visible = isProcessing,
-            modifier = Modifier.align(Alignment.Center)
-        ) {
-            CircularProgressIndicator(color = Color.White)
-        }
-
+        // History Bottom Sheet
         if (showHistory) {
             ModalBottomSheet(
                 onDismissRequest = { showHistory = false },
-                sheetState = sheetState
+                sheetState = sheetState,
+                containerColor = Color(0xFF1E1E1E),
+                contentColor = Color.White
             ) {
                 HistoryList(
                     history = scanHistory,
-                    onClearAll = {
-                        scope.launch { database.scanHistoryDao().deleteAll() }
-                    },
-                    onToggleFavorite = { item ->
+                    onClearAll = { scope.launch { database.scanHistoryDao().deleteAll() } },
+                    onToggleFavorite = { item -> scope.launch { database.scanHistoryDao().update(item.copy(isFavorite = !item.isFavorite)) } },
+                    onResend = { item ->
                         scope.launch {
-                            database.scanHistoryDao().update(item.copy(isFavorite = !item.isFavorite))
+                            handleScanResult(item.content, item.type, scope, firebaseManager, currentPairingId, database, "None", "", currentSplitCharacter, currentSoundEnabled, currentVibrationEnabled, false, context) {
+                                if (!it) Toast.makeText(context, "Resent!", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
                 )
             }
         }
+
+        if(isProcessing) CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = Color.White)
     }
 }
 
 @Composable
 fun ModeButton(label: String, isSelected: Boolean, onClick: () -> Unit) {
     Surface(
-        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
-        shape = CircleShape,
-        modifier = Modifier.clickable { onClick() }
+        onClick = onClick,
+        color = if (isSelected) Color.White.copy(alpha = 0.2f) else Color.Transparent,
+        shape = CircleShape
     ) {
-        Text(
-            text = label,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
-            color = if (isSelected) MaterialTheme.colorScheme.onPrimary else Color.White,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold
-        )
+        Text(label, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp), color = Color.White, fontWeight = FontWeight.Bold)
     }
 }
 
-fun handleScanResult(
-    code: String,
-    type: String,
-    scope: kotlinx.coroutines.CoroutineScope,
-    firebaseManager: FirebaseManager,
-    pairingId: String,
-    database: AppDatabase,
-    dataProcessingMode: String,
-    dataProcessingValue: String,
-    splitCharacter: String,
-    soundEnabled: Boolean,
-    vibrationEnabled: Boolean,
-    batchMode: Boolean,
-    context: Context,
-    onProcessingStateChange: (Boolean) -> Unit
-) {
-    Log.d("ScannerScreen", "Handling Scan Result: ${code.take(10)} (Type: $type)")
+fun handleScanResult(code: String, type: String, scope: kotlinx.coroutines.CoroutineScope, firebaseManager: FirebaseManager, pairingId: String, database: AppDatabase, dataProcessingMode: String, dataProcessingValue: String, splitCharacter: String, soundEnabled: Boolean, vibrationEnabled: Boolean, batchMode: Boolean, context: Context, onProcessingStateChange: (Boolean) -> Unit) {
+    if (code.startsWith("QR2PC:PAIR:")) {
+        val parts = code.split(":")
+        if (parts.size >= 4) {
+            val token = parts[2]; val pcName = parts[3]
+            scope.launch {
+                onProcessingStateChange(true)
+                val prefs = PreferencesManager(context)
+                val linkedJson = try { prefs.linkedDevices.first() } catch(e: Exception) { "[]" }
+                
+                var existingId: String? = null
+                try {
+                    val arr = JSONArray(linkedJson)
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.getJSONObject(i)
+                        if (obj.getString("name") == pcName) {
+                            existingId = obj.getString("id")
+                            break
+                        }
+                    }
+                } catch (e: Exception) {}
+
+                val finalId = existingId ?: ("PC_" + (1000..9999).random())
+                
+                firebaseManager.linkDevice(token, finalId, pcName) {
+                    if (it) {
+                        scope.launch {
+                            prefs.setPairingId(finalId)
+                            if (existingId == null) {
+                                prefs.addLinkedDevice(finalId, pcName)
+                            }
+                            Toast.makeText(context, "Device Linked: $pcName", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        Toast.makeText(context, "Pairing Failed!", Toast.LENGTH_SHORT).show()
+                    }
+                    onProcessingStateChange(false)
+                }
+            }
+            return
+        }
+    }
     scope.launch {
         onProcessingStateChange(true)
         
-        var processedCode = code
+        var processed = code
         try {
             if (type == "QR") {
                 when (dataProcessingMode) {
-                    "First N" -> {
-                        val n = dataProcessingValue.toIntOrNull() ?: code.length
-                        processedCode = code.take(n)
-                    }
-                    "Last N" -> {
-                        val n = dataProcessingValue.toIntOrNull() ?: code.length
-                        processedCode = code.takeLast(n)
-                    }
-                    "Regex" -> {
-                        if (dataProcessingValue.isNotEmpty()) {
-                            val regex = Regex(dataProcessingValue)
-                            processedCode = regex.find(code)?.value ?: code
-                        }
-                    }
+                    "First N" -> processed = code.take(dataProcessingValue.toIntOrNull() ?: code.length)
+                    "Last N" -> processed = code.takeLast(dataProcessingValue.toIntOrNull() ?: code.length)
+                    "Regex" -> if (dataProcessingValue.isNotEmpty()) processed = Regex(dataProcessingValue).find(code)?.value ?: code
                 }
             }
         } catch (e: Exception) {
-            Log.e("ScannerScreen", "Data processing failed", e)
+            Log.e("Scanner", "Processing error", e)
+        }
+
+        // 1. Log to database IMMEDIATELY
+        try {
+            database.scanHistoryDao().insert(ScanHistory(content = processed, type = type))
+            Log.d("Scanner", "Saved to local history")
+        } catch (e: Exception) {
+            Log.e("Scanner", "Database insert failed", e)
         }
 
         val finalData = when (splitCharacter) {
-            "Enter" -> "$processedCode\n"
-            "Tab" -> "$processedCode\t"
-            "Space" -> "$processedCode "
-            else -> processedCode
+            "Enter" -> "$processed\n"
+            "Tab" -> "$processed\t"
+            "Space" -> "$processed "
+            else -> processed
         }
 
+        // 2. Try sending to Firebase
         firebaseManager.sendScanResult(pairingId, finalData) { success ->
             scope.launch {
                 if (success) {
-                    Log.d("ScannerScreen", "Data sent successfully to Firebase")
                     provideFeedback(context, scope, soundEnabled, vibrationEnabled)
-                    Toast.makeText(context, "Sent: ${processedCode.take(15)}...", Toast.LENGTH_SHORT).show()
-                    database.scanHistoryDao().insert(ScanHistory(content = processedCode, type = type))
+                    Toast.makeText(context, "Sent: ${processed.take(20)}...", Toast.LENGTH_SHORT).show()
                 } else {
-                    Log.e("ScannerScreen", "Failed to send data to Firebase")
-                    Toast.makeText(context, "Send Failed", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Logged, but PC send failed!", Toast.LENGTH_SHORT).show()
                 }
-                
-                // Add a small safety delay to prevent double scans even in batch mode
-                if (!batchMode) {
-                    delay(2000)
-                } else {
-                    delay(500)
-                }
+                delay(if (batchMode) 500 else 2000)
                 onProcessingStateChange(false)
             }
         }
     }
 }
 
-fun processImageFromGallery(
-    context: Context,
-    uri: Uri,
-    mode: String,
-    scope: kotlinx.coroutines.CoroutineScope,
-    firebaseManager: FirebaseManager,
-    pairingId: String,
-    database: AppDatabase,
-    soundEnabled: Boolean,
-    vibrationEnabled: Boolean
+@Composable
+fun LensOCRView(
+    bitmap: Bitmap, 
+    lines: List<Text.Line>, 
+    initialText: String, 
+    onTextUpdate: (String) -> Unit, 
+    onRetake: () -> Unit, 
+    onSend: () -> Unit
 ) {
-    try {
-        val bitmap = if (Build.VERSION.SDK_INT < 28) {
-            MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
-        } else {
-            val source = ImageDecoder.createSource(context.contentResolver, uri)
-            ImageDecoder.decodeBitmap(source)
-        }
-        
-        val image = InputImage.fromBitmap(bitmap, 0)
-        
-        if (mode == "QR") {
-            val scanner = BarcodeScanning.getClient()
-            scanner.process(image)
-                .addOnSuccessListener { barcodes ->
-                    if (barcodes.isNotEmpty()) {
-                        val code = barcodes[0].rawValue ?: ""
-                        handleScanResult(code, "QR", scope, firebaseManager, pairingId, database, "None", "", "None", soundEnabled, vibrationEnabled, false, context) {}
-                    } else {
-                        Toast.makeText(context, "No QR code found", Toast.LENGTH_SHORT).show()
+    val selectedIndices = remember { mutableStateOf(setOf<Int>()) }
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Box(modifier = Modifier.weight(1f).onGloballyPositioned { size = it.size }) {
+                androidx.compose.foundation.Image(bitmap.asImageBitmap(), null, modifier = Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Fit)
+                Canvas(modifier = Modifier.fillMaxSize().pointerInput(lines) {
+                    detectTapGestures { offset ->
+                        lines.forEachIndexed { i, b ->
+                            if (scaleRect(b.boundingBox!!, bitmap, size).contains(offset)) {
+                                val newSet = selectedIndices.value.toMutableSet()
+                                if (newSet.contains(i)) newSet.remove(i) else newSet.add(i)
+                                selectedIndices.value = newSet
+                                
+                                // Reconstruct text from selected lines in order
+                                val sorted = newSet.toList().sorted()
+                                val combined = sorted.joinToString("\n") { lines[it].text }
+                                onTextUpdate(combined)
+                            }
+                        }
+                    }
+                }) {
+                    lines.forEachIndexed { i, b ->
+                        val r = scaleRect(b.boundingBox!!, bitmap, size)
+                        val sel = selectedIndices.value.contains(i)
+                        drawRect(if (sel) Color.Cyan.copy(0.4f) else Color.White.copy(0.15f), Offset(r.left, r.top), androidx.compose.ui.geometry.Size(r.width, r.height))
+                        drawRect(if (sel) Color.Cyan else Color.White.copy(0.6f), Offset(r.left, r.top), androidx.compose.ui.geometry.Size(r.width, r.height), style = androidx.compose.ui.graphics.drawscope.Stroke(1.5f))
                     }
                 }
-        } else {
-            val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-            recognizer.process(image)
-                .addOnSuccessListener { visionText ->
-                    if (visionText.text.isNotEmpty()) {
-                        handleScanResult(visionText.text, "TEXT", scope, firebaseManager, pairingId, database, "None", "", "None", soundEnabled, vibrationEnabled, false, context) {}
-                    } else {
-                        Toast.makeText(context, "No text found", Toast.LENGTH_SHORT).show()
+            }
+            
+            // Editor Area
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 12.dp, end = 12.dp, bottom = 48.dp, top = 12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(8.dp)) {
+                    OutlinedTextField(
+                        value = initialText,
+                        onValueChange = onTextUpdate,
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 120.dp),
+                        placeholder = { Text("Selected text appears here...", color = Color.Gray) },
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color.Cyan, unfocusedBorderColor = Color.DarkGray)
+                    )
+                    
+                    Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onRetake) { Text("RETAKE", color = Color.White.copy(0.6f)) }
+                        Button(onSend, enabled = initialText.isNotEmpty(), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4285F4))) { 
+                            Icon(Icons.AutoMirrored.Filled.Send, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("SEND TO PC") 
+                        }
                     }
                 }
+            }
         }
-    } catch (e: Exception) {
-        Log.e("GalleryScan", "Error processing image", e)
-        Toast.makeText(context, "Failed to process image", Toast.LENGTH_SHORT).show()
     }
+}
+
+private fun scaleRect(rect: android.graphics.Rect, bitmap: Bitmap, container: IntSize): Rect {
+    val scale = Math.min(container.width.toFloat() / bitmap.width, container.height.toFloat() / bitmap.height)
+    val ox = (container.width - bitmap.width * scale) / 2
+    val oy = (container.height - bitmap.height * scale) / 2
+    return Rect(rect.left * scale + ox, rect.top * scale + oy, rect.right * scale + ox, rect.bottom * scale + oy)
+}
+
+fun rotateBitmap(s: Bitmap, a: Int): Bitmap {
+    val m = android.graphics.Matrix(); m.postRotate(a.toFloat())
+    return Bitmap.createBitmap(s, 0, 0, s.width, s.height, m, true)
+}
+
+fun ImageProxy.toBitmapCustom(): Bitmap {
+    val b = planes[0].buffer; val t = ByteArray(b.remaining()); b.get(t)
+    return android.graphics.BitmapFactory.decodeByteArray(t, 0, t.size)
+}
+
+fun processImageFromGallery(context: Context, uri: Uri, mode: String, scope: kotlinx.coroutines.CoroutineScope, firebaseManager: FirebaseManager, pairingId: String, database: AppDatabase, soundEnabled: Boolean, vibrationEnabled: Boolean) {
+    try {
+        val bitmap = if (Build.VERSION.SDK_INT < 28) MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
+        else { val source = ImageDecoder.createSource(context.contentResolver, uri); ImageDecoder.decodeBitmap(source) }
+        val inputImage = InputImage.fromBitmap(bitmap, 0)
+        if (mode == "QR") {
+            BarcodeScanning.getClient().process(inputImage).addOnSuccessListener { barcodes ->
+                if (barcodes.isNotEmpty()) handleScanResult(barcodes[0].rawValue ?: "", "QR", scope, firebaseManager, pairingId, database, "None", "", "None", soundEnabled, vibrationEnabled, false, context) {}
+            }
+        } else {
+            TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS).process(inputImage).addOnSuccessListener { visionText ->
+                if (visionText.text.isNotEmpty()) handleScanResult(visionText.text, "TEXT", scope, firebaseManager, pairingId, database, "None", "", "None", soundEnabled, vibrationEnabled, false, context) {}
+            }
+        }
+    } catch (e: Exception) { Log.e("GalleryScan", "Error", e) }
 }
 
 @Composable
-fun HistoryList(
-    history: List<ScanHistory>,
-    onClearAll: () -> Unit,
-    onToggleFavorite: (ScanHistory) -> Unit,
-    showTitle: Boolean = true
-) {
-    var filterFavorites by remember { mutableStateOf(false) }
-    val filteredHistory = if (filterFavorites) history.filter { it.isFavorite } else history
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(if (showTitle) 16.dp else 0.dp)
-    ) {
+fun HistoryList(history: List<ScanHistory>, onClearAll: () -> Unit, onToggleFavorite: (ScanHistory) -> Unit, onResend: (ScanHistory) -> Unit, showTitle: Boolean = true) {
+    var favOnly by remember { mutableStateOf(false) }
+    val list = if (favOnly) history.filter { it.isFavorite } else history
+    Column(modifier = Modifier.fillMaxWidth().padding(if (showTitle) 16.dp else 0.dp)) {
         if (showTitle) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(stringResource(com.yusuftech.qr2pc.R.string.history_title), style = MaterialTheme.typography.titleLarge)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Scan Log", style = MaterialTheme.typography.titleLarge, color = Color.White)
                 Row {
-                    IconButton(onClick = { filterFavorites = !filterFavorites }) {
-                        Icon(
-                            imageVector = if (filterFavorites) Icons.Default.Star else Icons.Default.StarBorder,
-                            contentDescription = "Filter Favorites",
-                            tint = if (filterFavorites) Color(0xFFFFD700) else MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    TextButton(onClick = onClearAll) {
-                        Text(stringResource(com.yusuftech.qr2pc.R.string.history_clear_all))
-                    }
+                    IconButton(onClick = { favOnly = !favOnly }) { Icon(if (favOnly) Icons.Default.Star else Icons.Default.StarBorder, null, tint = if (favOnly) Color.Yellow else Color.White) }
+                    TextButton(onClearAll) { Text("Clear All", color = Color.Red) }
                 }
             }
         }
-        
-        if (filteredHistory.isEmpty()) {
-            Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                Text(
-                    if (filterFavorites) stringResource(com.yusuftech.qr2pc.R.string.history_empty) else stringResource(com.yusuftech.qr2pc.R.string.history_empty),
-                    color = MaterialTheme.colorScheme.outline
-                )
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(vertical = 8.dp)
-            ) {
-                items(filteredHistory) { item ->
+        if (list.isEmpty()) { Box(Modifier.fillMaxWidth().height(200.dp), Alignment.Center) { Text("No data", color = Color.Gray) } }
+        else {
+            LazyColumn {
+                items(list) { item ->
                     ListItem(
-                        leadingContent = {
-                            Icon(
-                                imageVector = if (item.type == "QR") Icons.Default.QrCode else Icons.Default.TextFields,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        },
-                        headlineContent = { Text(item.content, maxLines = 2) },
-                        supportingContent = {
-                            Text(SimpleDateFormat("HH:mm:ss, dd MMM", Locale.getDefault()).format(Date(item.timestamp)))
-                        },
+                        headlineContent = { Text(item.content, maxLines = 2, color = Color.White) },
+                        supportingContent = { Text(SimpleDateFormat("HH:mm, dd MMM", Locale.getDefault()).format(Date(item.timestamp)), color = Color.Gray) },
+                        leadingContent = { Icon(if (item.type == "QR") Icons.Default.QrCode else Icons.Default.TextFields, null, tint = Color.Cyan) },
                         trailingContent = {
-                            IconButton(onClick = { onToggleFavorite(item) }) {
-                                Icon(
-                                    imageVector = if (item.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
-                                    contentDescription = "Favorite",
-                                    tint = if (item.isFavorite) Color(0xFFFFD700) else MaterialTheme.colorScheme.outline
-                                )
+                            Row {
+                                IconButton(onClick = { onResend(item) }) { Icon(Icons.AutoMirrored.Filled.Send, "Resend", tint = MaterialTheme.colorScheme.primary) }
+                                IconButton(onClick = { onToggleFavorite(item) }) { Icon(if (item.isFavorite) Icons.Default.Star else Icons.Default.StarBorder, null, tint = if (item.isFavorite) Color.Yellow else Color.Gray) }
                             }
-                        }
+                        },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
                     )
-                    HorizontalDivider()
+                    HorizontalDivider(color = Color.White.copy(0.1f))
                 }
             }
         }
     }
 }
 
-fun provideFeedback(context: Context, scope: kotlinx.coroutines.CoroutineScope, soundEnabled: Boolean, vibrationEnabled: Boolean) {
-    if (soundEnabled) {
-        scope.launch {
-            try {
-                val toneGen = ToneGenerator(AudioManager.STREAM_MUSIC, 100)
-                toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
-                delay(200)
-                toneGen.release()
-            } catch (e: Exception) {
-                Log.e("Feedback", "Tone failed", e)
-            }
-        }
-    }
-    if (vibrationEnabled) {
-        try {
-            val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-            if (vibrator != null && vibrator.hasVibrator()) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    vibrator.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
-                } else {
-                    @Suppress("DEPRECATION")
-                    vibrator.vibrate(100)
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("Feedback", "Vibration failed", e)
-        }
-    }
+fun provideFeedback(c: Context, s: kotlinx.coroutines.CoroutineScope, sound: Boolean, vib: Boolean) {
+    if (sound) s.launch { try { val t = ToneGenerator(AudioManager.STREAM_MUSIC, 100); t.startTone(ToneGenerator.TONE_PROP_BEEP, 150); delay(200); t.release() } catch (e: Exception) { } }
+    if (vib) try { val v = c.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator; if (v != null && v.hasVibrator()) { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) v.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE)) else v.vibrate(100) } } catch (e: Exception) { }
 }

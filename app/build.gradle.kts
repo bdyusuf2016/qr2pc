@@ -13,8 +13,8 @@ android {
         applicationId = "com.yusuftech.qr2pc" // আপডেটেড
         minSdk = 24
         targetSdk = 35
-        versionCode = 5
-        versionName = "2.3"
+        versionCode = 6
+        versionName = "4.3 Ultimate"
     }
     buildFeatures {
         compose = true
@@ -45,7 +45,7 @@ dependencies {
 
     // ML Kit
     implementation("com.google.mlkit:barcode-scanning:17.2.0")
-    implementation(libs.mlkit.text.recognition)
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
 
     // Firebase
     implementation(platform("com.google.firebase:firebase-bom:34.16.0"))

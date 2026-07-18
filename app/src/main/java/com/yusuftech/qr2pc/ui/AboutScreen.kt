@@ -97,12 +97,13 @@ fun AboutScreen(modifier: Modifier = Modifier) {
         Text(
             text = "Md. Yusuf Ali",
             style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.ExtraBold
         )
         Text(
-            text = "Android Developer",
+            text = "Founder, Yusuf Tech",
             style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.primary
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Bold
         )
 
         Spacer(modifier = Modifier.height(32.dp))

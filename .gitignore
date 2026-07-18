@@ -18,6 +18,13 @@
 local.properties
 
 # Firebase & Secrets
-serviceAccountKey.json
+Scan Listener/serviceAccountKey.json
 app/google-services.json
 .artifacts/
+config.json
+config_v4.json
+
+# Python Build
+Scan Listener/dist/
+Scan Listener/build/
+Scan Listener/*.spec

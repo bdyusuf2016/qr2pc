@@ -22,6 +22,7 @@ class PreferencesManager(private val context: Context) {
         val BATCH_MODE = androidx.datastore.preferences.core.booleanPreferencesKey("batch_mode")
         val SCAN_MODE = stringPreferencesKey("scan_mode") // "QR" or "TEXT"
         val APP_LANGUAGE = stringPreferencesKey("app_language") // "sys", "en", "bn"
+        val LINKED_DEVICES = stringPreferencesKey("linked_devices") // JSON list
     }
 
     val serverIp: Flow<String?> = context.dataStore.data.map { it[SERVER_IP] }
@@ -35,6 +36,7 @@ class PreferencesManager(private val context: Context) {
     val batchMode: Flow<Boolean> = context.dataStore.data.map { it[BATCH_MODE] ?: false }
     val scanMode: Flow<String> = context.dataStore.data.map { it[SCAN_MODE] ?: "QR" }
     val appLanguage: Flow<String> = context.dataStore.data.map { it[APP_LANGUAGE] ?: "sys" }
+    val linkedDevices: Flow<String> = context.dataStore.data.map { it[LINKED_DEVICES] ?: "[]" }
 
     suspend fun saveServerIp(ip: String) {
         context.dataStore.edit { it[SERVER_IP] = ip }
@@ -78,5 +80,46 @@ class PreferencesManager(private val context: Context) {
 
     suspend fun setAppLanguage(lang: String) {
         context.dataStore.edit { it[APP_LANGUAGE] = lang }
+    }
+
+    suspend fun addLinkedDevice(id: String, name: String) {
+        context.dataStore.edit { prefs ->
+            val current = prefs[LINKED_DEVICES] ?: "[]"
+            try {
+                val arr = org.json.JSONArray(current)
+                var exists = false
+                for (i in 0 until arr.length()) {
+                    val obj = arr.getJSONObject(i)
+                    if (obj.getString("name") == name || obj.getString("id") == id) {
+                        exists = true
+                        break
+                    }
+                }
+                if (!exists) {
+                    val newObj = org.json.JSONObject()
+                    newObj.put("id", id)
+                    newObj.put("name", name)
+                    arr.put(newObj)
+                    prefs[LINKED_DEVICES] = arr.toString()
+                }
+            } catch (e: Exception) {
+                // Fallback to simple string if JSON fails
+                if (!current.contains(id)) {
+                    val newList = if (current == "[]") "[{\"id\":\"$id\",\"name\":\"$name\"}]" 
+                                  else current.replace("]", ",{\"id\":\"$id\",\"name\":\"$name\"}]")
+                    prefs[LINKED_DEVICES] = newList
+                }
+            }
+        }
+    }
+
+    suspend fun removeLinkedDevice(id: String) {
+        context.dataStore.edit { prefs ->
+            val current = prefs[LINKED_DEVICES] ?: "[]"
+            // Very simple string replace for demo/internal use
+            val regex = Regex("\\{.*?\"id\":\"$id\".*?\\},?")
+            val updated = current.replace(regex, "").replace(",]", "]").replace("[,", "[")
+            prefs[LINKED_DEVICES] = if (updated == "[]" || updated.length < 5) "[]" else updated
+        }
     }
 }
